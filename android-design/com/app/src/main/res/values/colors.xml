@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand & Accent Colors -->
+    <color name="primary">#4F46E5</color>
+    <color name="primary_variant">#4338CA</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="secondary">#06B6D4</color>
+    <color name="on_secondary">#FFFFFF</color>
+    <color name="success">#10B981</color>
+    <color name="warning">#F59E0B</color>
+    <color name="error">#EF4444</color>
+
+    <!-- Dark Mode Theme Surfaces -->
+    <color name="background_dark">#0B0F19</color>
+    <color name="surface_dark">#111827</color>
+    <color name="surface_variant_dark">#1F2937</color>
+    <color name="card_bg_dark">#1E293B</color>
+    <color name="border_dark">#334155</color>
+    <color name="text_primary_dark">#F8FAFC</color>
+    <color name="text_secondary_dark">#94A3B8</color>
+
+    <!-- Eye-Care Theme Palette (Warm Cream + Emerald Green) -->
+    <color name="eyecare_background">#F6F4ED</color>
+    <color name="eyecare_surface">#EFECE4</color>
+    <color name="eyecare_card">#FFFFFF</color>
+    <color name="eyecare_primary">#2E7D56</color>
+    <color name="eyecare_primary_variant">#246545</color>
+    <color name="eyecare_accent">#52B788</color>
+    <color name="eyecare_border">#D8D3C5</color>
+    <color name="eyecare_text_primary">#1D2D24</color>
+    <color name="eyecare_text_secondary">#5C6D62</color>
+
+    <!-- Light Mode Theme Surfaces -->
+    <color name="background_light">#F8FAFC</color>
+    <color name="surface_light">#FFFFFF</color>
+    <color name="border_light">#E2E8F0</color>
+    <color name="text_primary_light">#0F172A</color>
+    <color name="text_secondary_light">#64748B</color>
+
+    <!-- Radar Canvas Colors -->
+    <color name="radar_center">#6366F1</color>
+    <color name="radar_wave">#38BDF8</color>
+    <color name="radar_device_node">#10B981</color>
+</resources>

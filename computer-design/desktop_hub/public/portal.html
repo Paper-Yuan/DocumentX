@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#4F46E5">
+  <title>SafeDrop 极速快传 - 独立文件收发门户</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --radius-full: 9999px;
+      --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    body.dark-theme {
+      --bg-base: #0B0F19;
+      --bg-surface: rgba(17, 24, 39, 0.85);
+      --bg-card: #151D2F;
+      --bg-card-hover: #1C263E;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-active: rgba(99, 102, 241, 0.5);
+      --text-primary: #F8FAFC;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --accent: #6366F1;
+      --accent-hover: #4F46E5;
+      --accent-glow: rgba(99, 102, 241, 0.25);
+      --success: #10B981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --header-bg: rgba(11, 15, 25, 0.88);
+    }
+
+    body.eyecare-theme {
+      --bg-base: #EDE4D0;
+      --bg-surface: #F5EDDC;
+      --bg-card: #FDF9F0;
+      --bg-card-hover: #FAF4E5;
+      --border-color: #D5C7AA;
+      --border-active: #2E7D56;
+      --text-primary: #000000;
+      --text-secondary: #3D382B;
+      --text-muted: #665E4E;
+      --accent: #2E7D56;
+      --accent-hover: #246445;
+      --accent-glow: rgba(46, 125, 86, 0.2);
+      --success: #1B6B40;
+      --success-glow: rgba(27, 107, 64, 0.2);
+      --warning: #925805;
+      --danger: #9E2A2B;
+      --header-bg: rgba(237, 228, 208, 0.92);
+    }
+
+    body.light-theme {
+      --bg-base: #F8FAFC;
+      --bg-surface: #FFFFFF;
+      --bg-card: #FFFFFF;
+      --bg-card-hover: #F1F5F9;
+      --border-color: #E2E8F0;
+      --border-active: #4F46E5;
+      --text-primary: #0F172A;
+      --text-secondary: #475569;
+      --text-muted: #94A3B8;
+      --accent: #4F46E5;
+      --accent-hover: #4338CA;
+      --accent-glow: rgba(79, 70, 229, 0.15);
+      --success: #10B981;
+      --success-glow: rgba(16, 185, 129, 0.15);
+      --warning: #D97706;
+      --danger: #DC2626;
+      --header-bg: rgba(255, 255, 255, 0.92);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: var(--transition);
+      overflow-x: hidden;
+    }
+
+    /* Header */
+    .portal-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background-color: var(--header-bg);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, var(--accent), #818CF8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px var(--accent-glow);
+    }
+
+    .brand-logo svg {
+      width: 22px;
+      height: 22px;
+      stroke: #FFFFFF;
+    }
+
+    .brand-info h1 {
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .brand-info p {
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--success);
+      display: inline-block;
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .theme-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .theme-btn:hover {
+      border-color: var(--border-active);
+    }
+
+    /* Container */
+    .portal-container {
+      max-width: 880px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 24px 16px 60px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Host info banner */
+    .host-banner-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    }
+
+    .host-meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .host-avatar {
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      background: rgba(99, 102, 241, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+    }
+
+    .host-avatar svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .host-details h2 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .host-details span {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .auth-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .auth-badge.unlocked {
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--success);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .auth-badge.locked {
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--warning);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    /* Tabs switch */
+    .portal-tabs {
+      display: flex;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      gap: 4px;
+    }
+
+    .portal-tab-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-family);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: var(--transition);
+    }
+
+    .portal-tab-btn.active {
+      background: var(--accent);
+      color: #FFFFFF;
+      box-shadow: 0 2px 8px var(--accent-glow);
+    }
+
+    /* Sections */
+    .portal-section {
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .portal-section.active {
+      display: flex;
+    }
+
+    /* Upload Card */
+    .upload-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 28px 20px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      transition: var(--transition);
+      cursor: pointer;
+      position: relative;
+    }
+
+    .upload-card:hover, .upload-card.dragover {
+      border-color: var(--accent);
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+    }
+
+    .upload-icon-circle {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: rgba(99, 102, 241, 0.12);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 4px;
+    }
+
+    .upload-icon-circle svg {
+      width: 36px;
+      height: 36px;
+    }
+
+    .upload-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .upload-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      max-width: 440px;
+      line-height: 1.5;
+    }
+
+    .btn-select-file {
+      background: var(--accent);
+      color: #FFFFFF;
+      border: none;
+      font-family: var(--font-family);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px 28px;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: var(--transition);
+      box-shadow: 0 4px 14px var(--accent-glow);
+    }
+
+    .btn-select-file:hover {
+      background: var(--accent-hover);
+      transform: scale(1.02);
+    }
+
+    /* Upload Task Progress List */
+    .task-queue-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-title-row h3 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .task-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .task-item-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .task-file-name {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .task-status-badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+    }
+
+    .task-status-badge.transferring {
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--accent);
+    }
+
+    .task-status-badge.done {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+    }
+
+    .task-status-badge.error {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+    }
+
+    .task-progress-bar {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    body.eyecare-theme .task-progress-bar, body.light-theme .task-progress-bar {
+      background: rgba(0, 0, 0, 0.08);
+    }
+
+    .task-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #818CF8);
+      width: 0%;
+      border-radius: 3px;
+      transition: width 0.15s ease;
+    }
+
+    .task-item-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Files download section */
+    .files-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .files-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .file-row {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      transition: var(--transition);
+    }
+
+    .file-row:hover {
+      border-color: var(--border-active);
+      background: var(--bg-card-hover);
+    }
+
+    .file-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .file-icon-box {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(99, 102, 241, 0.12);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .file-meta {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .file-name {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-subtext {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .btn-download-file {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      font-family: var(--font-family);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+      flex-shrink: 0;
+    }
+
+    .btn-download-file:hover {
+      background: var(--accent);
+      color: #FFFFFF;
+      border-color: var(--accent);
+    }
+
+    .empty-placeholder {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* PIN Unlock Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 20px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .pin-modal-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .pin-modal-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .pin-modal-card p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .pin-inputs-row {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .pin-digit-input {
+      width: 46px;
+      height: 54px;
+      border-radius: var(--radius-md);
+      border: 1.5px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-size: 24px;
+      font-weight: 700;
+      text-align: center;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    .pin-digit-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    /* Toast */
+    .toast-box {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 12px 24px;
+      border-radius: var(--radius-full);
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+      z-index: 300;
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toast-box.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .host-banner-card {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .upload-card {
+        padding: 24px 16px;
+      }
+      .upload-title {
+        font-size: 16px;
+      }
+      .btn-select-file {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body class="dark-theme">
+
+  <!-- Header -->
+  <header class="portal-header">
+    <div class="brand-wrap">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div class="brand-info">
+        <h1>SafeDrop 极速快传</h1>
+        <p><span class="status-dot"></span><span id="headerStatusText">独立文件收发门户</span></p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="theme-btn" id="themeBtn" title="切换暗黑/护眼/明亮模式">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="portal-container">
+    <!-- Host device identity banner -->
+    <div class="host-banner-card">
+      <div class="host-meta">
+        <div class="host-avatar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+        </div>
+        <div class="host-details">
+          <h2 id="hostDeviceName">正在连接直连主机...</h2>
+          <span id="hostAddressText">局域网直连模式</span>
+        </div>
+      </div>
+      <div class="auth-badge unlocked" id="authBadge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+        <span id="authBadgeText">已建立信任直连</span>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="portal-tabs">
+      <button class="portal-tab-btn active" data-tab="uploadTab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <span>投送文件到对方端</span>
+      </button>
+
+      <button class="portal-tab-btn" data-tab="downloadTab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span>浏览并接收对方文件</span>
+      </button>
+    </div>
+
+    <!-- Tab 1: Upload -->
+    <section class="portal-section active" id="uploadTab">
+      <input type="file" id="portalFileInput" multiple style="display: none;">
+      
+      <div class="upload-card" id="uploadDropZone">
+        <div class="upload-icon-circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+        </div>
+        <h3 class="upload-title">点击选择文件 / 拖拽投放到此处</h3>
+        <p class="upload-desc">直接通过局域网高速传输到对方设备，支持大视频、文档、相册无损原图，无需安装任何 App</p>
+        <button class="btn-select-file" id="btnChooseFiles">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>选取文件开始投送</span>
+        </button>
+      </div>
+
+      <!-- Upload Task Queue -->
+      <div class="task-queue-card" id="taskQueueCard" style="display: none;">
+        <div class="card-title-row">
+          <h3>传输进度</h3>
+          <span style="font-size: 12px; color: var(--text-secondary);" id="taskStatsText">进行中 0 项</span>
+        </div>
+        <div class="task-items-container" id="taskItemsContainer">
+          <!-- Injected dynamically -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: Download -->
+    <section class="portal-section" id="downloadTab">
+      <div class="files-card">
+        <div class="card-title-row">
+          <h3>对方端共享文件列表</h3>
+          <button class="btn-download-file" id="btnRefreshFiles" style="padding: 6px 12px; font-size: 12px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;">
+              <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            <span>刷新列表</span>
+          </button>
+        </div>
+
+        <div class="files-list" id="filesListContainer">
+          <div class="empty-placeholder" id="filesEmptyPlaceholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:36px;height:36px;opacity:0.6;">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+              <polyline points="13 2 13 9 20 9"></polyline>
+            </svg>
+            <p>对方端当前暂无接收或共享的文件</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- PIN Unlock Modal -->
+  <div class="modal-overlay" id="pinModalOverlay">
+    <div class="pin-modal-card">
+      <div style="width:48px;height:48px;border-radius:50%;background:rgba(99,102,241,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:24px;height:24px;">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h3>安全配对验证</h3>
+      <p>请输入对方端屏幕上显示的 6 位动态 PIN 码以解锁文件上传与下载：</p>
+      
+      <div class="pin-inputs-row">
+        <input type="tel" maxlength="1" class="pin-digit-input" data-index="0" autofocus>
+        <input type="tel" maxlength="1" class="pin-digit-input" data-index="1">
+        <input type="tel" maxlength="1" class="pin-digit-input" data-index="2">
+        <input type="tel" maxlength="1" class="pin-digit-input" data-index="3">
+        <input type="tel" maxlength="1" class="pin-digit-input" data-index="4">
+        <input type="tel" maxlength="1" class="pin-digit-input" data-index="5">
+      </div>
+
+      <button class="btn-select-file" id="btnConfirmPin" style="width:100%;justify-content:center;margin-top:8px;">
+        <span>立即验证</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-box" id="toastBox"></div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const urlParams = new URLSearchParams(window.location.search);
+      let pinParam = urlParams.get('pin') || '';
+      let tokenParam = urlParams.get('token') || '';
+      let isVerified = false;
+
+      const state = {
+        hostInfo: null,
+        files: [],
+        tasks: [],
+        theme: localStorage.getItem('safedrop_theme') || 'dark-theme'
+      };
+
+      const dom = {
+        hostDeviceName: document.getElementById('hostDeviceName'),
+        hostAddressText: document.getElementById('hostAddressText'),
+        authBadge: document.getElementById('authBadge'),
+        authBadgeText: document.getElementById('authBadgeText'),
+        headerStatusText: document.getElementById('headerStatusText'),
+        uploadDropZone: document.getElementById('uploadDropZone'),
+        portalFileInput: document.getElementById('portalFileInput'),
+        btnChooseFiles: document.getElementById('btnChooseFiles'),
+        taskQueueCard: document.getElementById('taskQueueCard'),
+        taskItemsContainer: document.getElementById('taskItemsContainer'),
+        taskStatsText: document.getElementById('taskStatsText'),
+        filesListContainer: document.getElementById('filesListContainer'),
+        filesEmptyPlaceholder: document.getElementById('filesEmptyPlaceholder'),
+        btnRefreshFiles: document.getElementById('btnRefreshFiles'),
+        themeBtn: document.getElementById('themeBtn'),
+        pinModalOverlay: document.getElementById('pinModalOverlay'),
+        btnConfirmPin: document.getElementById('btnConfirmPin'),
+        toastBox: document.getElementById('toastBox'),
+        tabBtns: document.querySelectorAll('.portal-tab-btn'),
+        sections: document.querySelectorAll('.portal-section')
+      };
+
+      // 1. Init
+      async function init() {
+        applyTheme(state.theme);
+        initTabs();
+        initThemeToggle();
+        initUploadEvents();
+        initPinInputs();
+
+        await fetchHostInfo();
+
+        if (pinParam || tokenParam) {
+          // Auto verify with URL parameters
+          await verifyPin(pinParam, tokenParam);
+        } else {
+          // Check if session token exists
+          const savedPin = sessionStorage.getItem('safedrop_portal_pin');
+          if (savedPin) {
+            await verifyPin(savedPin);
+          } else {
+            // Require PIN
+            showPinModal();
+          }
+        }
+
+        fetchFiles();
+        setInterval(fetchFiles, 6000);
+      }
+
+      // 2. Fetch host info
+      async function fetchHostInfo() {
+        try {
+          const res = await fetch('/api/v1/info');
+          if (res.ok) {
+            const data = await res.json();
+            state.hostInfo = data;
+            const name = data.host?.name || data.name || `${window.location.hostname} (SafeDrop 端)`;
+            dom.hostDeviceName.textContent = name;
+            dom.hostAddressText.textContent = `${window.location.hostname}:${window.location.port || 8899} • 局域网高速直连`;
+          }
+        } catch (_) {
+          dom.hostDeviceName.textContent = `${window.location.hostname} (SafeDrop 直连端)`;
+        }
+      }
+
+      // 3. Verify PIN
+      async function verifyPin(pin, token = '') {
+        try {
+          const res = await fetch('/api/v1/handshake/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin: pin || '', token: token || '' })
+          });
+          const data = await res.json();
+          if (res.ok && data.code === 0) {
+            isVerified = true;
+            sessionStorage.setItem('safedrop_portal_pin', pin);
+            hidePinModal();
+            dom.authBadge.className = 'auth-badge unlocked';
+            dom.authBadgeText.textContent = '已建立安全直连';
+            dom.headerStatusText.textContent = '已连接，可随时传输';
+            showToast('已成功接入对方端！');
+            fetchFiles();
+            return true;
+          }
+        } catch (_) {}
+
+        dom.authBadge.className = 'auth-badge locked';
+        dom.authBadgeText.textContent = '未输入 PIN 解锁';
+        showPinModal();
+        return false;
+      }
+
+      function showPinModal() {
+        dom.pinModalOverlay.classList.add('active');
+        const firstInput = dom.pinModalOverlay.querySelector('.pin-digit-input[data-index="0"]');
+        if (firstInput) firstInput.focus();
+      }
+
+      function hidePinModal() {
+        dom.pinModalOverlay.classList.remove('active');
+      }
+
+      function initPinInputs() {
+        const inputs = Array.from(dom.pinModalOverlay.querySelectorAll('.pin-digit-input'));
+        inputs.forEach((input, idx) => {
+          input.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            if (val && idx < inputs.length - 1) {
+              inputs[idx + 1].focus();
+            }
+          });
+
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !input.value && idx > 0) {
+              inputs[idx - 1].focus();
+            }
+            if (e.key === 'Enter') {
+              dom.btnConfirmPin.click();
+            }
+          });
+        });
+
+        dom.btnConfirmPin.addEventListener('click', async () => {
+          const pinStr = inputs.map(i => i.value.trim()).join('');
+          if (pinStr.length !== 6) {
+            showToast('请输入完整的 6 位数字 PIN 码');
+            return;
+          }
+          const ok = await verifyPin(pinStr);
+          if (!ok) {
+            showToast('PIN 码验证未通过，请核对对方屏幕显示的数字');
+            inputs.forEach(i => i.value = '');
+            inputs[0].focus();
+          }
+        });
+      }
+
+      // 4. File Upload (1MB chunked stream)
+      function initUploadEvents() {
+        dom.btnChooseFiles.addEventListener('click', (e) => {
+          e.stopPropagation();
+          dom.portalFileInput.click();
+        });
+
+        dom.uploadDropZone.addEventListener('click', () => {
+          dom.portalFileInput.click();
+        });
+
+        dom.portalFileInput.addEventListener('change', (e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleFiles(Array.from(e.target.files));
+            dom.portalFileInput.value = '';
+          }
+        });
+
+        ['dragenter', 'dragover'].forEach(name => {
+          dom.uploadDropZone.addEventListener(name, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dom.uploadDropZone.classList.add('dragover');
+          });
+        });
+
+        ['dragleave', 'drop'].forEach(name => {
+          dom.uploadDropZone.addEventListener(name, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dom.uploadDropZone.classList.remove('dragover');
+          });
+        });
+
+        dom.uploadDropZone.addEventListener('drop', (e) => {
+          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFiles(Array.from(e.dataTransfer.files));
+          }
+        });
+      }
+
+      function handleFiles(files) {
+        if (!files.length) return;
+        dom.taskQueueCard.style.display = 'flex';
+        files.forEach(file => {
+          uploadSingleFile(file);
+        });
+        showToast(`已添加 ${files.length} 个投送任务`);
+      }
+
+      async function uploadSingleFile(file) {
+        const CHUNK_SIZE = 1024 * 1024;
+        const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+        const taskId = `portal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+        const task = {
+          id: taskId,
+          name: file.name,
+          size: file.size,
+          uploaded: 0,
+          status: 'transferring',
+          speed: '0 KB/s',
+          totalChunks: totalChunks,
+          currentChunk: 0
+        };
+
+        state.tasks.unshift(task);
+        renderTasks();
+
+        let lastBytes = 0;
+        let lastTime = Date.now();
+
+        for (let idx = 0; idx < totalChunks; idx++) {
+          const start = idx * CHUNK_SIZE;
+          const end = Math.min(file.size, start + CHUNK_SIZE);
+          const chunkBlob = file.slice(start, end);
+
+          try {
+            const res = await fetch('/api/v1/transfer/upload', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/octet-stream',
+                'X-Task-Id': taskId,
+                'X-File-Name': encodeURIComponent(file.name),
+                'X-File-Size': file.size.toString(),
+                'X-Chunk-Index': idx.toString(),
+                'X-Chunk-Count': totalChunks.toString()
+              },
+              body: chunkBlob
+            });
+
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}`);
+            }
+
+            task.uploaded = end;
+            task.currentChunk = idx + 1;
+
+            const now = Date.now();
+            const deltaSec = (now - lastTime) / 1000;
+            if (deltaSec >= 0.4 || idx === totalChunks - 1) {
+              const speedBytes = (task.uploaded - lastBytes) / Math.max(0.1, deltaSec);
+              task.speed = formatSpeed(speedBytes);
+              lastBytes = task.uploaded;
+              lastTime = now;
+              renderTasks();
+            }
+          } catch (err) {
+            task.status = 'error';
+            task.speed = '传输中断';
+            renderTasks();
+            showToast(`文件 "${file.name}" 投送失败: ${err.message}`);
+            return;
+          }
+        }
+
+        task.status = 'done';
+        task.speed = '投送完成';
+        renderTasks();
+        showToast(`文件 "${file.name}" 已成功投送到对方端！`);
+        fetchFiles();
+      }
+
+      function renderTasks() {
+        const activeCount = state.tasks.filter(t => t.status === 'transferring').length;
+        dom.taskStatsText.textContent = activeCount > 0 ? `进行中 ${activeCount} 项` : `全部任务完成`;
+
+        dom.taskItemsContainer.innerHTML = state.tasks.map(t => {
+          const pct = t.size === 0 ? 100 : Math.min(100, Math.round((t.uploaded / t.size) * 100));
+          return `
+            <div class="task-item">
+              <div class="task-item-head">
+                <span class="task-file-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+                <span class="task-status-badge ${t.status}">
+                  ${t.status === 'done' ? '已完成' : (t.status === 'error' ? '失败' : `${pct}%`)}
+                </span>
+              </div>
+              <div class="task-progress-bar">
+                <div class="task-progress-fill" style="width: ${pct}%;"></div>
+              </div>
+              <div class="task-item-foot">
+                <span>${formatBytes(t.uploaded)} / ${formatBytes(t.size)} (${t.currentChunk}/${t.totalChunks} 块)</span>
+                <span>${t.speed}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // 5. Fetch & render files for download
+      async function fetchFiles() {
+        try {
+          const res = await fetch('/api/v1/files/list');
+          if (res.ok) {
+            const data = await res.json();
+            state.files = data.files || [];
+            renderFilesList();
+          }
+        } catch (_) {}
+      }
+
+      function renderFilesList() {
+        if (!state.files || state.files.length === 0) {
+          dom.filesEmptyPlaceholder.style.display = 'flex';
+          dom.filesListContainer.querySelectorAll('.file-row').forEach(e => e.remove());
+          return;
+        }
+
+        dom.filesEmptyPlaceholder.style.display = 'none';
+        const rowsHtml = state.files.map(f => {
+          const downloadUrl = `/api/v1/files/download/${encodeURIComponent(f.name)}`;
+          const timeStr = f.mtime ? new Date(f.mtime).toLocaleString() : '';
+          return `
+            <div class="file-row">
+              <div class="file-left">
+                <div class="file-icon-box">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                  </svg>
+                </div>
+                <div class="file-meta">
+                  <span class="file-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+                  <span class="file-subtext">${formatBytes(f.size || 0)} ${timeStr ? '• ' + timeStr : ''}</span>
+                </div>
+              </div>
+              <a href="${downloadUrl}" download="${escapeHtml(f.name)}" class="btn-download-file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>下载</span>
+              </a>
+            </div>
+          `;
+        }).join('');
+
+        dom.filesListContainer.innerHTML = rowsHtml;
+      }
+
+      dom.btnRefreshFiles.addEventListener('click', () => {
+        fetchFiles();
+        showToast('共享文件列表已刷新');
+      });
+
+      // 6. Tabs
+      function initTabs() {
+        dom.tabBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const targetId = btn.getAttribute('data-tab');
+            dom.tabBtns.forEach(b => b.classList.toggle('active', b === btn));
+            dom.sections.forEach(s => s.classList.toggle('active', s.id === targetId));
+            if (targetId === 'downloadTab') {
+              fetchFiles();
+            }
+          });
+        });
+      }
+
+      // 7. Theme
+      function initThemeToggle() {
+        dom.themeBtn.addEventListener('click', () => {
+          const themes = ['dark-theme', 'eyecare-theme', 'light-theme'];
+          const idx = themes.indexOf(state.theme);
+          const next = themes[(idx + 1) % themes.length];
+          applyTheme(next);
+        });
+      }
+
+      function applyTheme(themeName) {
+        state.theme = themeName;
+        document.body.className = themeName;
+        localStorage.setItem('safedrop_theme', themeName);
+      }
+
+      // Helpers
+      function formatBytes(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+      }
+
+      function formatSpeed(bytesPerSec) {
+        if (!bytesPerSec || bytesPerSec <= 0) return '0 KB/s';
+        if (bytesPerSec >= 1024 * 1024) {
+          return (bytesPerSec / (1024 * 1024)).toFixed(1) + ' MB/s';
+        }
+        return (bytesPerSec / 1024).toFixed(0) + ' KB/s';
+      }
+
+      function escapeHtml(str) {
+        return String(str || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      let toastTimer = null;
+      function showToast(msg) {
+        clearTimeout(toastTimer);
+        dom.toastBox.textContent = msg;
+        dom.toastBox.classList.add('show');
+        toastTimer = setTimeout(() => {
+          dom.toastBox.classList.remove('show');
+        }, 3200);
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

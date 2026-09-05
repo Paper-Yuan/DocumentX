@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/chipCard"
+    android:layout_width="wrap_content"
+    android:layout_height="38dp"
+    android:layout_marginEnd="8dp"
+    app:cardBackgroundColor="@color/surface_dark"
+    app:cardCornerRadius="19dp"
+    app:strokeColor="@color/border_dark"
+    app:strokeWidth="1dp">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp">
+
+        <ImageView
+            android:id="@+id/ivChipIcon"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:src="@drawable/ic_device_pc"
+            app:tint="@color/secondary" />
+
+        <TextView
+            android:id="@+id/tvChipName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="Windows PC"
+            android:textColor="@color/text_primary_dark"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <View
+            android:id="@+id/vChipStatusDot"
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_circle"
+            android:backgroundTint="@color/success" />
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

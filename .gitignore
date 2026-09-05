@@ -1,0 +1,44 @@
+# Build Artifacts and Binaries
+*.apk
+*.aab
+*.exe
+*.msi
+*.dll
+*.pdb
+*.obj
+*.iso
+set/*.exe
+
+# Gradle and Android Build
+.gradle/
+**/build/
+**/local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Flutter and Dart Build
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Node and NPM
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs & Temporary Files
+*.log
+*.tmp
+*.temp
+.system_generated/
+
+# OS and Editor specific
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.vscode/

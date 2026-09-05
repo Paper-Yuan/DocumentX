@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SafeDrop</string>
+    <string name="app_subtitle">跨平台安全快传移动端</string>
+
+    <!-- Navigation labels -->
+    <string name="nav_radar">设备发现</string>
+    <string name="nav_transfer">传输中心</string>
+    <string name="nav_vault">安全沙箱</string>
+    <string name="nav_settings">系统设置</string>
+
+    <!-- Scan & Out-of-band Pairing -->
+    <string name="action_scan">扫码配对</string>
+    <string name="scan_hint">对准电脑端屏幕上的 SafeDrop 二维码</string>
+    <string name="scan_success">扫码成功，正在穿透 AP 隔离建立握手...</string>
+    <string name="pairing_title">带外信任配对</string>
+    <string name="pairing_pin_hint">请输入电脑端展示的 6 位动态 PIN 码</string>
+
+    <!-- Radar & Device Discovery -->
+    <string name="radar_title">局域网设备拓扑雷达</string>
+    <string name="radar_scanning">组播锁保护中，实时探测在线电脑...</string>
+    <string name="no_devices">未发现局域网电脑，请点击右上角扫码连接</string>
+    <string name="device_online">在线</string>
+
+    <!-- File Transfer -->
+    <string name="send_file">投送文件</string>
+    <string name="select_from_gallery">相册媒体</string>
+    <string name="select_from_files">文档文件</string>
+    <string name="transferring">正在加密流式传输...</string>
+    <string name="transfer_complete">传输完成，已存入沙箱</string>
+    <string name="cancel_transfer">取消传输</string>
+
+    <!-- System Share Target -->
+    <string name="share_target_title">一键投送到电脑端</string>
+    <string name="select_pc_hint">选择接收文件的电脑中枢：</string>
+    <string name="share_sending">正在打包加密投送...</string>
+
+    <!-- Runtime Permissions -->
+    <string name="camera_permission_required">需要摄像头权限以扫描电脑端动态配对码</string>
+    <string name="notification_permission_required">需要通知权限以在前台显示传输进度条与速率</string>
+</resources>

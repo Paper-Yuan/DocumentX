@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SafeDrop</string>
+    <string name="app_subtitle">Cross-platform Secure Transfer</string>
+
+    <!-- Navigation -->
+    <string name="nav_radar">Radar</string>
+    <string name="nav_transfer">Transfers</string>
+    <string name="nav_vault">Vault</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Scanner & Pairing -->
+    <string name="action_scan">Scan QR</string>
+    <string name="scan_hint">Point camera at SafeDrop QR code on PC screen</string>
+    <string name="scan_success">Scanned successfully, establishing connection...</string>
+    <string name="pairing_title">Out-of-Band Pairing</string>
+    <string name="pairing_pin_hint">Enter 6-digit dynamic PIN from PC</string>
+
+    <!-- Radar & Discovery -->
+    <string name="radar_title">Local Device Radar</string>
+    <string name="radar_scanning">Scanning for online Desktop Hubs...</string>
+    <string name="no_devices">No PC detected. Tap Scan QR to connect</string>
+    <string name="device_online">Online</string>
+
+    <!-- Transfers -->
+    <string name="send_file">Send File</string>
+    <string name="select_from_gallery">Media Gallery</string>
+    <string name="select_from_files">Documents</string>
+    <string name="transferring">Streaming encrypted file...</string>
+    <string name="transfer_complete">Transfer complete, saved to vault</string>
+    <string name="cancel_transfer">Cancel Transfer</string>
+
+    <!-- Share Receiver -->
+    <string name="share_target_title">Send to PC with SafeDrop</string>
+    <string name="select_pc_hint">Select target Desktop Hub:</string>
+    <string name="share_sending">Encrypting and transferring...</string>
+
+    <!-- Permissions -->
+    <string name="camera_permission_required">Camera permission required to scan PC QR code</string>
+    <string name="notification_permission_required">Notification permission required for transfer progress</string>
+</resources>

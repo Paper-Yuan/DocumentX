@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 1. Sleek Minimalist Rounded Squircle Backplate -->
+    <path
+        android:pathData="M40,16 L68,16 C82,16 92,26 92,40 L92,68 C92,82 82,92 68,92 L40,92 C26,92 16,82 16,68 L16,40 C16,26 26,16 40,16 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="16"
+                android:startY="16"
+                android:endX="92"
+                android:endY="92"
+                android:type="linear">
+                <item android:color="#1E1B4B" android:offset="0.0" />
+                <item android:color="#0F172A" android:offset="0.55" />
+                <item android:color="#020617" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 2. Subtle Outer Cyan Glow Rim -->
+    <path
+        android:pathData="M40,17 L68,17 C81.5,17 91,26.5 91,40 L91,68 C91,81.5 81.5,91 68,91 L40,91 C26.5,91 17,81.5 17,68 L17,40 C17,26.5 26.5,17 40,17 Z"
+        android:strokeWidth="1.2"
+        android:strokeColor="#38BDF8"
+        android:strokeAlpha="0.35" />
+
+    <!-- 3. Gentle Ambient Wireless Pulse Arc -->
+    <path
+        android:pathData="M35,46 C41,38 67,38 73,46"
+        android:strokeWidth="2.0"
+        android:strokeColor="#818CF8"
+        android:strokeAlpha="0.3"
+        android:strokeLineCap="round" />
+
+    <!-- 4. Central Minimalist Rounded SafeDrop Motif (Smooth Water Drop + Shield) -->
+    <path
+        android:pathData="M54,28 C55.5,28 57,30 60,34 C67,43 74,53 74,62 C74,73 65,80 54,80 C43,80 34,73 34,62 C34,53 41,43 48,34 C51,30 52.5,28 54,28 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="34"
+                android:startY="28"
+                android:endX="74"
+                android:endY="80"
+                android:type="linear">
+                <item android:color="#06B6D4" android:offset="0.0" />
+                <item android:color="#3B82F6" android:offset="0.45" />
+                <item android:color="#4F46E5" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 5. Inner Smooth Rounded Transmission Waves (Clean White Waves) -->
+    <!-- Primary Wave Arc -->
+    <path
+        android:pathData="M42,56 C42,48.8 47.4,43.5 54,43.5 C60.6,43.5 66,48.8 66,56"
+        android:strokeWidth="3.2"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+
+    <!-- Secondary Wave Arc -->
+    <path
+        android:pathData="M46.8,61.5 C46.8,57.5 50,54.5 54,54.5 C58,54.5 61.2,57.5 61.2,61.5"
+        android:strokeWidth="2.8"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.92"
+        android:strokeLineCap="round" />
+
+    <!-- 6. Quantum Anchor / Emerald Security Core (Rounded Glow Node) -->
+    <!-- Outer Soft Glow Dot -->
+    <path
+        android:pathData="M54,69.5 m-5.5,0 a5.5,5.5 0 1,0 11,0 a5.5,5.5 0 1,0 -11,0"
+        android:fillColor="#10B981"
+        android:fillAlpha="0.3" />
+
+    <!-- Solid Emerald Core Dot -->
+    <path
+        android:pathData="M54,69.5 m-3.6,0 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="50.4"
+                android:startY="65.9"
+                android:endX="57.6"
+                android:endY="73.1"
+                android:type="linear">
+                <item android:color="#34D399" android:offset="0.0" />
+                <item android:color="#059669" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+</vector>

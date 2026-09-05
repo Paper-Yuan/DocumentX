@@ -1,0 +1,1010 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mainCoordinatorLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark">
+
+    <!-- Top App Bar -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/mainAppBarLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/surface_dark">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/topAppBar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:title="@string/app_name"
+            app:titleTextColor="@color/text_primary_dark"
+            app:subtitle="@string/app_subtitle"
+            app:subtitleTextColor="@color/text_secondary_dark">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="12dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <!-- My Pairing QR code action button (Icon only) -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnShowMyQr"
+                    style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_marginEnd="8dp"
+                    android:contentDescription="生成我的配对码"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    android:padding="0dp"
+                    app:cornerRadius="19dp"
+                    app:icon="@drawable/ic_qr_code"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="20dp"
+                    app:iconTint="@color/secondary" />
+
+                <!-- Dynamic PIN pairing action button (Icon only) -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnInputPin"
+                    style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_marginEnd="8dp"
+                    android:contentDescription="输入 PIN 配对"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    android:padding="0dp"
+                    app:cornerRadius="19dp"
+                    app:icon="@drawable/ic_key"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="20dp"
+                    app:iconTint="@color/secondary" />
+
+                <!-- Scan QR code action button (Icon only) -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnScanQr"
+                    style="@style/Widget.Material3.Button.IconButton.Filled"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:contentDescription="扫码配对"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    android:padding="0dp"
+                    app:backgroundTint="@color/primary"
+                    app:cornerRadius="19dp"
+                    app:icon="@drawable/ic_scan"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="20dp"
+                    app:iconTint="@color/on_primary" />
+
+            </LinearLayout>
+
+        </com.google.android.material.appbar.MaterialToolbar>
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- 4 Independent Full Pages Container -->
+    <FrameLayout
+        android:id="@+id/pagesContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginBottom="96dp"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <!-- ============================================== -->
+        <!-- 1. PAGE 1: 设备发现 (Device Discovery Page)   -->
+        <!-- ============================================== -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/layoutDiscoveryPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="visible">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Modern Discovery Hub Beacon Card (Sleek Horizontal Ambient Card with breathing room) -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardRadar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="@color/surface_dark"
+                    app:cardCornerRadius="18dp"
+                    app:strokeColor="@color/border_dark"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="16dp"
+                        android:paddingVertical="14dp">
+
+                        <!-- Ambient Beacon Icon -->
+                        <FrameLayout
+                            android:layout_width="44dp"
+                            android:layout_height="44dp">
+
+                            <View
+                                android:id="@+id/beaconOuterRing"
+                                android:layout_width="44dp"
+                                android:layout_height="44dp"
+                                android:alpha="0.2"
+                                android:background="@drawable/bg_circle"
+                                android:backgroundTint="@color/primary" />
+
+                            <ImageView
+                                android:id="@+id/beaconInnerIcon"
+                                android:layout_width="32dp"
+                                android:layout_height="32dp"
+                                android:layout_gravity="center"
+                                android:background="@drawable/bg_circle"
+                                android:backgroundTint="@color/primary"
+                                android:padding="7dp"
+                                android:src="@drawable/ic_radar"
+                                app:tint="@color/on_primary" />
+
+                        </FrameLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvBeaconTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="SafeDrop 近场广播感知中"
+                                android:textColor="@color/text_primary_dark"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvRadarStatus"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="监听局域网设备 (UDP 8890 探针通道)..."
+                                android:textColor="@color/text_secondary_dark"
+                                android:textSize="11sp" />
+
+                        </LinearLayout>
+
+                        <!-- Online Count Badge -->
+                        <TextView
+                            android:id="@+id/tvOnlineCountTag"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_badge_pill"
+                            android:backgroundTint="@color/surface_variant_dark"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="4dp"
+                            android:text="0 台在线"
+                            android:textColor="@color/success"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Discovered devices section title (Spacious layout) -->
+                <TextView
+                    android:id="@+id/tvDeviceSectionTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:layout_marginBottom="10dp"
+                    android:text="局域网在线设备"
+                    android:textColor="@color/text_primary_dark"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <!-- Devices list -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvDevices"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    tools:itemCount="2"
+                    tools:listitem="@layout/item_device" />
+
+                <!-- Empty devices state view -->
+                <TextView
+                    android:id="@+id/tvEmptyDevices"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:padding="20dp"
+                    android:text="@string/no_devices"
+                    android:textColor="@color/text_secondary_dark"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <!-- Fast File Transfer actions -->
+                <TextView
+                    android:id="@+id/tvTransferSectionTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="8dp"
+                    android:text="快速投送文件"
+                    android:textColor="@color/text_primary_dark"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/cardSendMedia"
+                        android:layout_width="0dp"
+                        android:layout_height="80dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        app:cardBackgroundColor="@color/surface_dark"
+                        app:cardCornerRadius="16dp"
+                        app:strokeColor="@color/border_dark"
+                        app:strokeWidth="1dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:orientation="vertical">
+
+                            <ImageView
+                                android:layout_width="26dp"
+                                android:layout_height="26dp"
+                                android:src="@drawable/ic_send"
+                                app:tint="@color/secondary" />
+
+                            <TextView
+                                android:id="@+id/tvSendMedia"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="@string/select_from_gallery"
+                                android:textColor="@color/text_primary_dark"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/cardSendFiles"
+                        android:layout_width="0dp"
+                        android:layout_height="80dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        app:cardBackgroundColor="@color/surface_dark"
+                        app:cardCornerRadius="16dp"
+                        app:strokeColor="@color/border_dark"
+                        app:strokeWidth="1dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:orientation="vertical">
+
+                            <ImageView
+                                android:layout_width="26dp"
+                                android:layout_height="26dp"
+                                android:src="@drawable/ic_download"
+                                app:tint="@color/success" />
+
+                            <TextView
+                                android:id="@+id/tvSendFiles"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="@string/select_from_files"
+                                android:textColor="@color/text_primary_dark"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </androidx.core.widget.NestedScrollView>
+
+        <!-- ============================================================== -->
+        <!-- 2. PAGE 2: 互传会话与传输窗口 (Per-Device Transfer & Chat Page) -->
+        <!-- ============================================================== -->
+        <LinearLayout
+            android:id="@+id/layoutTransferPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- Top Header & Peer Chips Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tvTransferPageTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="互传会话窗口"
+                        android:textColor="@color/text_primary_dark"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnClearCompletedTasks"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="清空当前记录"
+                        android:textColor="@color/text_secondary_dark"
+                        android:textSize="12sp" />
+
+                </LinearLayout>
+
+                <!-- Peer Selector Horizontal RecyclerView -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvPeerChips"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal"
+                    app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+                    tools:listitem="@layout/item_peer_chip" />
+
+            </LinearLayout>
+
+            <!-- State 1: No Peer Online State -->
+            <LinearLayout
+                android:id="@+id/layoutNoPeerState"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="32dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:alpha="0.4"
+                    android:src="@drawable/ic_radar"
+                    app:tint="@color/text_secondary_dark" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="暂无已连接设备"
+                    android:textColor="@color/text_primary_dark"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center"
+                    android:text="请在“发现”页扫描配对码或轻触设备卡片上的“会话”按钮开启窗口"
+                    android:textColor="@color/text_secondary_dark"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+
+            <!-- State 2: Active Peer Conversation Area -->
+            <LinearLayout
+                android:id="@+id/layoutActivePeerContent"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:visibility="visible">
+
+                <!-- Active Peer Info Banner (Hidden per user request: chip selector above is sufficient) -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardActivePeerInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:visibility="gone"
+                    app:cardBackgroundColor="@color/surface_dark"
+                    app:cardCornerRadius="14dp"
+                    app:strokeColor="@color/border_dark"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="14dp"
+                        android:paddingVertical="10dp">
+
+                        <ImageView
+                            android:id="@+id/ivActivePeerAvatar"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="@drawable/bg_badge_rounded"
+                            android:backgroundTint="@color/surface_variant_dark"
+                            android:padding="8dp"
+                            android:src="@drawable/ic_device_pc"
+                            app:tint="@color/secondary" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal">
+
+                                <TextView
+                                    android:id="@+id/tvActivePeerName"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Windows 电脑中枢"
+                                    android:textColor="@color/text_primary_dark"
+                                    android:textSize="14sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/tvActivePeerTag"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="6dp"
+                                    android:background="@drawable/bg_badge_rounded"
+                                    android:backgroundTint="@color/surface_variant_dark"
+                                    android:paddingHorizontal="6dp"
+                                    android:paddingVertical="1dp"
+                                    android:text="电脑端"
+                                    android:textColor="@color/secondary"
+                                    android:textSize="9sp"
+                                    android:textStyle="bold" />
+
+                            </LinearLayout>
+
+                            <TextView
+                                android:id="@+id/tvActivePeerMeta"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="192.168.10.42:8899 • X25519 加密通道"
+                                android:textColor="@color/text_secondary_dark"
+                                android:textSize="11sp" />
+
+                        </LinearLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnActivePeerQuickSend"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="34dp"
+                            android:paddingHorizontal="10dp"
+                            android:text="投送文件"
+                            android:textColor="@color/on_primary"
+                            android:textSize="11sp"
+                            app:backgroundTint="@color/primary"
+                            app:icon="@drawable/ic_send"
+                            app:iconTint="@color/on_primary" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Channel Messages & File Transfers List (Full height) -->
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1">
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rvChannelMessages"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:clipToPadding="false"
+                        android:paddingHorizontal="16dp"
+                        android:paddingVertical="6dp"
+                        tools:listitem="@layout/item_channel_message" />
+
+                    <!-- Keep backward compatibility reference rvTransferTasks hidden if needed -->
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rvTransferTasks"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/tvEmptyChannelMessages"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:padding="32dp"
+                        android:text="已与该设备建立加密直连通道\n轻触左下方“投送”发送文件，或在下方输入即时消息"
+                        android:textColor="@color/text_secondary_dark"
+                        android:textSize="13sp"
+                        android:visibility="visible" />
+
+                    <TextView
+                        android:id="@+id/tvEmptyTransferTasks"
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:visibility="gone" />
+
+                </FrameLayout>
+
+                <!-- Top divider for independent dialog display -->
+                <View
+                    android:id="@+id/chatInputBarDivider"
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/border_dark" />
+
+                <!-- Bottom Chat & Transfer Input Bar (Independent Display) -->
+                <LinearLayout
+                    android:id="@+id/layoutChatInputBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@color/surface_dark"
+                    android:elevation="6dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="12dp"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="10dp">
+
+                    <!-- Prominent 投送 button placed right on the left of the input box -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnChannelPickFile"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:layout_marginEnd="8dp"
+                        android:contentDescription="投送文件"
+                        android:insetLeft="0dp"
+                        android:insetTop="0dp"
+                        android:insetRight="0dp"
+                        android:insetBottom="0dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="投送"
+                        android:textColor="@color/secondary"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        app:backgroundTint="@color/surface_variant_dark"
+                        app:cornerRadius="20dp"
+                        app:icon="@drawable/ic_send"
+                        app:iconPadding="4dp"
+                        app:iconSize="16dp"
+                        app:iconTint="@color/secondary" />
+
+                    <EditText
+                        android:id="@+id/etChannelMessage"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_chat_input"
+                        android:hint="输入即时文本或剪贴板..."
+                        android:imeOptions="actionSend"
+                        android:inputType="textShortMessage"
+                        android:maxLines="1"
+                        android:paddingHorizontal="14dp"
+                        android:textColor="@color/text_primary_dark"
+                        android:textColorHint="@color/text_secondary_dark"
+                        android:textSize="13sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnChannelSendMessage"
+                        style="@style/Widget.Material3.Button.IconButton.Filled"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_marginStart="8dp"
+                        android:contentDescription="发送消息"
+                        android:insetLeft="0dp"
+                        android:insetTop="0dp"
+                        android:insetRight="0dp"
+                        android:insetBottom="0dp"
+                        android:padding="0dp"
+                        app:backgroundTint="@color/primary"
+                        app:cornerRadius="20dp"
+                        app:icon="@drawable/ic_send"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp"
+                        app:iconSize="18dp"
+                        app:iconTint="@color/on_primary" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- ============================================== -->
+        <!-- 3. PAGE 3: 安全沙箱 (Vault / Storage Page)    -->
+        <!-- ============================================== -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/layoutVaultPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Storage Info Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardStorageSettings"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="@color/surface_dark"
+                    app:cardCornerRadius="16dp"
+                    app:strokeColor="@color/border_dark"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:id="@+id/tvStorageTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="存储落盘沙箱 (Scoped Storage)"
+                            android:textColor="@color/text_primary_dark"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvCurrentStoragePath"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Download/SafeDrop (相册媒体秒刷新 Pictures/SafeDrop)"
+                            android:textColor="@color/text_secondary_dark"
+                            android:textSize="12sp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:gravity="end"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnChangeStoragePath"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:layout_marginEnd="8dp"
+                                android:text="切换目录"
+                                android:textSize="12sp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnOpenStorageFolder"
+                                style="@style/Widget.Material3.Button.TonalButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:text="打开系统下载目录"
+                                android:textSize="12sp" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Received Files List Title -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tvVaultSectionTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="已接收文件列表"
+                        android:textColor="@color/text_primary_dark"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnRefreshVault"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="刷新"
+                        android:textColor="@color/secondary"
+                        android:textSize="12sp" />
+
+                </LinearLayout>
+
+                <!-- Files RecyclerView -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvVaultFiles"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:nestedScrollingEnabled="false"
+                    tools:listitem="@layout/item_vault_file" />
+
+                <!-- Empty files state view -->
+                <TextView
+                    android:id="@+id/tvEmptyVaultFiles"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:padding="48dp"
+                    android:text="沙箱内暂无已接收的文件\n电脑端投送文件完成后将自动展示于此处"
+                    android:textColor="@color/text_secondary_dark"
+                    android:textSize="13sp"
+                    android:visibility="visible" />
+
+            </LinearLayout>
+
+        </androidx.core.widget.NestedScrollView>
+
+        <!-- ============================================== -->
+        <!-- 4. PAGE 4: 系统设置 (Settings Page)            -->
+        <!-- ============================================== -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/layoutSettingsPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- 1. Theme Selection Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardSettingsTheme"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="14dp"
+                    app:cardBackgroundColor="@color/surface_dark"
+                    app:cardCornerRadius="16dp"
+                    app:strokeColor="@color/border_dark"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:id="@+id/tvThemeTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="外观与色彩主题"
+                            android:textColor="@color/text_primary_dark"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <LinearLayout
+                            android:id="@+id/layoutThemeOptions"
+                            android:layout_width="match_parent"
+                            android:layout_height="46dp"
+                            android:layout_marginTop="12dp"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnThemeDark"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:layout_marginEnd="6dp"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                android:paddingStart="2dp"
+                                android:paddingEnd="2dp"
+                                android:text="🌙 暗黑"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                app:cornerRadius="12dp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnThemeEyecare"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:layout_marginEnd="6dp"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                android:paddingStart="2dp"
+                                android:paddingEnd="2dp"
+                                android:text="🌿 护眼"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                app:cornerRadius="12dp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnThemeLight"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                android:paddingStart="2dp"
+                                android:paddingEnd="2dp"
+                                android:text="☀️ 明亮"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                app:cornerRadius="12dp" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- 2. Network and Node Info Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardSettingsNetwork"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="14dp"
+                    app:cardBackgroundColor="@color/surface_dark"
+                    app:cardCornerRadius="16dp"
+                    app:strokeColor="@color/border_dark"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:id="@+id/tvSettingsNetTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="网络与节点状态"
+                            android:textColor="@color/text_primary_dark"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvSettingsLocalIp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="本机局域网 IP: 192.168.10.x:8899"
+                            android:textColor="@color/text_secondary_dark"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/tvSettingsTargetPc"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="绑定电脑中枢: 192.168.10.42:8899"
+                            android:textColor="@color/text_secondary_dark"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/tvSettingsMulticast"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="自发现通道: UDP 8890 (MulticastLock 持有保护中)"
+                            android:textColor="@color/success"
+                            android:textSize="11sp" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- 3. Security Protocol Info Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardSettingsSecurity"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="@color/surface_dark"
+                    app:cardCornerRadius="16dp"
+                    app:strokeColor="@color/border_dark"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:id="@+id/tvSettingsSecurityTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="密码学与安全核心"
+                            android:textColor="@color/text_primary_dark"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvSettingsSecurityDesc"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:lineSpacingExtra="3dp"
+                            android:text="• 密钥协商: PFS X25519 (ECDH) 临时会话密钥\n• 加密传输: AES-256-GCM 1MB 流式分块背压控制\n• 沙箱规范: Android 10+ Scoped Storage 分区存储\n• 穿透协议: 6 位动态 PIN 码 + 二维码带外信任锚点"
+                            android:textColor="@color/text_secondary_dark"
+                            android:textSize="12sp" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
+
+        </androidx.core.widget.NestedScrollView>
+
+    </FrameLayout>
+
+    <!-- Material 3 Bottom Navigation Bar -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNavigation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@color/surface_dark"
+        app:labelVisibilityMode="labeled"
+        app:itemIconTint="@color/text_secondary_dark"
+        app:itemTextColor="@color/text_secondary_dark"
+        app:menu="@menu/bottom_nav_menu" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
