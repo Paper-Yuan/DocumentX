@@ -557,6 +557,7 @@
       bytesUploaded: 0,
       status: 'transferring', // transferring | done | failed
       speed: '0 KB/s',
+      eta: '',  // NEW: Estimated time remaining
       targetName: targetDev ? targetDev.name : '电脑安全沙箱',
       isOutgoing: !!targetDev,
       startTime: Date.now()
@@ -633,7 +634,13 @@
         const deltaSec = (now - lastTime) / 1000;
         if (deltaSec >= 0.5 || chunkIdx === totalChunks - 1) {
           const deltaBytes = taskObj.bytesUploaded - lastBytes;
-          taskObj.speed = formatSpeed(deltaBytes / Math.max(0.1, deltaSec));
+          const speedBytesPerSec = deltaBytes / Math.max(0.1, deltaSec);
+          taskObj.speed = formatSpeed(speedBytesPerSec);
+          
+          // NEW: Calculate ETA
+          const remainingBytes = file.size - taskObj.bytesUploaded;
+          taskObj.eta = formatETA(remainingBytes, speedBytesPerSec);
+          
           lastBytes = taskObj.bytesUploaded;
           lastTime = now;
           renderTransfersList();
@@ -732,7 +739,7 @@
           </div>
           <div class="transfer-foot">
             <span>${formatBytes(t.bytesUploaded)} / ${formatBytes(t.fileSize)} (${t.currentChunk}/${t.totalChunks} 块)</span>
-            <span>${escapeHtml(t.speed || '')}</span>
+            <span>${escapeHtml(t.speed || '')}${t.eta ? ' · ' + escapeHtml(t.eta) : ''}</span>
           </div>
         </div>
       `;
@@ -1732,6 +1739,37 @@
     if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
     if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
     return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+
+  // Calculate and format ETA (Estimated Time Remaining)
+  function formatETA(remainingBytes, speedBytesPerSec) {
+    if (speedBytesPerSec <= 0 || remainingBytes <= 0) return '';
+    
+    const remainingSeconds = Math.ceil(remainingBytes / speedBytesPerSec);
+    
+    if (remainingSeconds < 60) {
+      return `剩余 ${remainingSeconds}秒`;
+    } else if (remainingSeconds < 3600) {
+      const minutes = Math.floor(remainingSeconds / 60);
+      const seconds = remainingSeconds % 60;
+      return `剩余 ${minutes}分${seconds}秒`;
+    } else {
+      const hours = Math.floor(remainingSeconds / 3600);
+      const minutes = Math.floor((remainingSeconds % 3600) / 60);
+      return `剩余 ${hours}小时${minutes}分`;
+    }
+  }
+
+  // Parse speed string back to bytes per second for ETA calculation
+  function parseSpeedToBytes(speedStr) {
+    if (!speedStr || speedStr === '0 B/s') return 0;
+    const match = speedStr.match(/([\d.]+)\s*(B|KB|MB)\/s/);
+    if (!match) return 0;
+    const value = parseFloat(match[1]);
+    const unit = match[2];
+    if (unit === 'MB') return value * 1024 * 1024;
+    if (unit === 'KB') return value * 1024;
+    return value;
   }
 
   function escapeHtml(str) {

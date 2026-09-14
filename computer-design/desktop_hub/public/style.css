@@ -4,20 +4,39 @@
    ========================================================= */
 
 :root {
-  --primary-font: 'Segoe UI Variable Text', -apple-system, BlinkMacSystemFont, 'Outfit', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --primary-font: 'Plus Jakarta Sans', 'Segoe UI Variable Text', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   
-  /* Enhanced color palette with better harmony */
-  --accent: #3B82F6;
-  --accent-light: #60A5FA;
-  --accent-dark: #2563EB;
-  --accent-glow: rgba(59, 130, 246, 0.35);
-  --accent-glow-strong: rgba(59, 130, 246, 0.55);
+  /* Corporate Trust Design System - Indigo/Violet Color Palette */
+  --primary: #4F46E5;              /* Indigo 600 */
+  --primary-light: #6366F1;        /* Indigo 500 */
+  --primary-dark: #4338CA;         /* Indigo 700 */
+  --secondary: #7C3AED;            /* Violet 600 */
+  --secondary-light: #8B5CF6;      /* Violet 500 */
+  
+  /* Legacy accent (for backward compatibility) */
+  --accent: #4F46E5;
+  --accent-light: #6366F1;
+  --accent-dark: #4338CA;
+  --accent-glow: rgba(79, 70, 229, 0.35);
+  --accent-glow-strong: rgba(79, 70, 229, 0.55);
+  
+  /* Semantic colors */
   --success: #10B981;
   --success-glow: rgba(16, 185, 129, 0.3);
   --warning: #F59E0B;
   --warning-glow: rgba(245, 158, 11, 0.3);
   --danger: #EF4444;
   --danger-glow: rgba(239, 68, 68, 0.3);
+  
+  /* Corporate Trust Gradients */
+  --gradient-primary: linear-gradient(135deg, #4F46E5, #7C3AED);
+  --gradient-primary-hover: linear-gradient(135deg, #6366F1, #8B5CF6);
+  
+  /* Corporate Trust Shadows (colored, not neutral gray) */
+  --shadow-primary: 0 4px 20px -2px rgba(79, 70, 229, 0.1);
+  --shadow-primary-hover: 0 10px 25px -5px rgba(79, 70, 229, 0.15), 0 8px 10px -6px rgba(79, 70, 229, 0.1);
+  --shadow-button: 0 4px 14px 0 rgba(79, 70, 229, 0.3);
+  --shadow-glow-primary: 0 0 20px rgba(79, 70, 229, 0.5);
   
   /* Enhanced border radius system for depth */
   --radius-xs: 6px;
@@ -64,8 +83,8 @@ body.dark-theme {
   
   --border: rgba(255, 255, 255, 0.09);
   --border-hover: rgba(255, 255, 255, 0.14);
-  --border-focus: rgba(59, 130, 246, 0.65);
-  --border-active: rgba(59, 130, 246, 0.85);
+  --border-focus: rgba(79, 70, 229, 0.65);
+  --border-active: rgba(79, 70, 229, 0.85);
   
   --glass: rgba(20, 20, 30, 0.78);
   --glass-hover: rgba(28, 28, 42, 0.88);
@@ -122,36 +141,36 @@ body.eyecare-theme {
   --scrollbar-thumb-hover: #A8A088;
 }
 
-/* Light theme variables - Enhanced clarity and airiness */
+/* Light theme variables - Corporate Trust Style */
 body.light-theme {
-  --bg-app: #F4F6FA;
+  --bg-app: #F8FAFC;           /* Slate 50 */
   --bg-sidebar: #FFFFFF;
   --bg-surface: #FAFBFC;
   --bg-card: rgba(255, 255, 255, 0.92);
   --bg-card-hover: rgba(250, 251, 252, 0.98);
   --bg-card-active: #F8FAFB;
-  --bg-input: #E7ECF3;
+  --bg-input: #F1F5F9;         /* Slate 100 */
   --bg-elevated: rgba(255, 255, 255, 0.96);
   
-  --text-main: #0F172A;
-  --text-secondary: #3E4A5D;
-  --text-muted: #6B7788;
-  --text-dimmed: #939FB0;
+  --text-main: #0F172A;        /* Slate 900 */
+  --text-secondary: #475569;   /* Slate 600 */
+  --text-muted: #64748B;       /* Slate 500 */
+  --text-dimmed: #94A3B8;      /* Slate 400 */
   
-  --accent: #3B82F6;
-  --accent-light: #60A5FA;
-  --accent-dark: #2563EB;
-  --accent-glow: rgba(59, 130, 246, 0.22);
-  --accent-glow-strong: rgba(59, 130, 246, 0.38);
+  --accent: #4F46E5;           /* Indigo 600 */
+  --accent-light: #6366F1;     /* Indigo 500 */
+  --accent-dark: #4338CA;      /* Indigo 700 */
+  --accent-glow: rgba(79, 70, 229, 0.22);
+  --accent-glow-strong: rgba(79, 70, 229, 0.38);
   
-  --border: rgba(15, 23, 42, 0.10);
-  --border-hover: rgba(15, 23, 42, 0.16);
-  --border-focus: rgba(59, 130, 246, 0.50);
-  --border-active: rgba(59, 130, 246, 0.70);
+  --border: #E2E8F0;           /* Slate 200 */
+  --border-hover: #CBD5E1;     /* Slate 300 */
+  --border-focus: rgba(79, 70, 229, 0.50);
+  --border-active: rgba(79, 70, 229, 0.70);
   
   --glass: rgba(255, 255, 255, 0.85);
   --glass-hover: rgba(255, 255, 255, 0.94);
-  --glass-border: rgba(15, 23, 42, 0.09);
+  --glass-border: rgba(226, 232, 240, 0.6);
   
   --shadow-sm: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
   --shadow-md: 0 8px 26px rgba(15, 23, 42, 0.12), 0 4px 10px rgba(15, 23, 42, 0.08);
@@ -900,17 +919,25 @@ body.light-theme .theme-icon-dark, body.light-theme .theme-icon-eyecare { displa
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: var(--gradient-primary);  /* Indigo to Violet gradient */
   color: #FFF;
-  box-shadow: 0 2px 8px var(--accent-glow);
+  border: none;
+  padding: 11px 24px;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-button);  /* Colored button shadow */
 }
 
 .btn-primary:hover {
-  background: #1084D9;
+  background: var(--gradient-primary-hover);  /* Lighter gradient on hover */
+  transform: translateY(-2px);  /* Subtle lift */
+  box-shadow: 0 6px 18px 0 rgba(79, 70, 229, 0.4);  /* Enhanced shadow */
 }
 
 .btn-primary:active {
-  transform: scale(0.97);
+  transform: translateY(0) scale(0.98);
 }
 
 .btn-secondary {
@@ -967,14 +994,14 @@ body.light-theme .theme-icon-dark, body.light-theme .theme-icon-eyecare { displa
 .device-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);  /* 12px for Corporate Trust consistency */
   padding: 16px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   min-height: 86px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-primary);  /* Corporate Trust colored shadow */
   cursor: pointer;
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
@@ -984,9 +1011,9 @@ body.light-theme .theme-icon-dark, body.light-theme .theme-icon-eyecare { displa
 
 .device-card:hover {
   background: var(--bg-card-hover);
-  border-color: rgba(0, 120, 212, 0.35);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  border-color: var(--accent);  /* Indigo border on hover */
+  transform: translateY(-4px);  /* Enhanced lift effect */
+  box-shadow: var(--shadow-primary-hover);  /* Multi-layer colored shadow */
 }
 
 .device-left {
@@ -1233,18 +1260,21 @@ body.light-theme .theme-icon-dark, body.light-theme .theme-icon-eyecare { displa
 
 .progress-track {
   width: 100%;
-  height: 6px;
-  background: var(--border);
+  height: 8px;  /* Increased from 6px for better visibility */
+  background: rgba(226, 232, 240, 0.3);  /* Light Slate with transparency */
   border-radius: var(--radius-full);
   overflow: hidden;
+  position: relative;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  background: var(--gradient-primary);  /* Indigo to Violet gradient */
   border-radius: var(--radius-full);
-  transition: width 0.15s ease;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   width: 0%;
+  box-shadow: 0 0 12px rgba(79, 70, 229, 0.4);  /* Glowing effect */
+  position: relative;
 }
 
 .transfer-foot {
