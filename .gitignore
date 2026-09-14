@@ -7,7 +7,19 @@
 *.pdb
 *.obj
 *.iso
+*.lnk
+*.so
+*.dylib
+*.rlib
+*.rmeta
 set/*.exe
+
+# Rust / Tauri Build
+target/
+Cargo.lock
+dist/
+**/src-tauri/target/
+**/WixTools/
 
 # Gradle and Android Build
 .gradle/
@@ -29,12 +41,14 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+package-lock.json
 
 # Logs & Temporary Files
 *.log
 *.tmp
 *.temp
 .system_generated/
+.release-notes-*.md
 
 # OS and Editor specific
 .DS_Store
@@ -42,3 +56,5 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 .vscode/
+*.swp
+*~
