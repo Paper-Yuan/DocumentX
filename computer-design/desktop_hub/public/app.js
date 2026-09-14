@@ -22,6 +22,14 @@
       try { return JSON.parse(localStorage.getItem('safedrop_chat_histories') || '{}'); } catch (_) { return {}; }
     })(),
     lastMessageTimestamp: 0,
+    // NEW: Concurrent transfer queue management
+    transferQueue: [],
+    activeTransfers: 0,
+    maxConcurrentTransfers: 3,
+    // NEW: Compression settings
+    compressionEnabled: (() => {
+      try { return localStorage.getItem('safedrop_compression_enabled') !== 'false'; } catch (_) { return true; }
+    })(),
   };
 
   // DOM element references
@@ -538,42 +546,98 @@
     });
   }
 
-  // 9. Handle selected files and start 1MB chunked streaming upload
+  // 9. Handle selected files and start concurrent transfer queue
   function handleFilesSelected(files) {
     if (files.length === 0) return;
 
     files.forEach(file => {
-      startChunkedUploadTask(file);
+      enqueueTransferTask(file);
     });
 
     switchTab('transfersTab');
-    showToast(`已加入 ${files.length} 个传输任务`);
+    showToast(`已加入 ${files.length} 个传输任务到并发队列`);
+    processTransferQueue();
   }
 
-  async function startChunkedUploadTask(file, specificTargetDev = null) {
+  // NEW: Enqueue file transfer task
+  function enqueueTransferTask(file, specificTargetDev = null) {
     const targetDev = specificTargetDev || state.targetDevice;
-    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunk size (optimized for gigabit LAN)
-    const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-
+    
     const taskObj = {
       id: taskId,
+      file: file,
       fileName: file.name,
       fileSize: file.size,
-      totalChunks: totalChunks,
+      totalChunks: Math.max(1, Math.ceil(file.size / (4 * 1024 * 1024))),
       currentChunk: 0,
       bytesUploaded: 0,
-      status: 'transferring', // transferring | done | failed
-      speed: '0 KB/s',
-      eta: '',  // NEW: Estimated time remaining
+      status: 'queued', // queued | transferring | done | failed
+      speed: '等待中',
+      eta: '',
       targetName: targetDev ? targetDev.name : '电脑安全沙箱',
+      targetDev: targetDev,
       isOutgoing: !!targetDev,
-      startTime: Date.now()
+      startTime: null,
+      queuePosition: state.transferQueue.length + 1
     };
 
     state.tasks.unshift(taskObj);
+    state.transferQueue.push(taskObj);
     renderTransfersList();
     updateTaskBadges();
+  }
+
+  // NEW: Process transfer queue with max concurrent limit
+  async function processTransferQueue() {
+    while (state.transferQueue.length > 0 && state.activeTransfers < state.maxConcurrentTransfers) {
+      const taskObj = state.transferQueue.shift();
+      if (taskObj && taskObj.status === 'queued') {
+        state.activeTransfers++;
+        taskObj.status = 'transferring';
+        taskObj.startTime = Date.now();
+        taskObj.speed = '0 KB/s';
+        renderTransfersList();
+        updateTaskBadges();
+        
+        // Execute transfer asynchronously without blocking queue
+        executeChunkedUpload(taskObj).finally(() => {
+          state.activeTransfers--;
+          processTransferQueue(); // Process next in queue
+        });
+      }
+    }
+  }
+
+  // NEW: Check if file should be compressed based on extension
+  function shouldCompressFile(fileName, fileSize) {
+    if (!state.compressionEnabled) return false;
+    if (fileSize < 1024 * 1024) return false; // Skip files < 1MB
+    
+    const ext = fileName.toLowerCase().split('.').pop();
+    const compressibleExts = [
+      'txt', 'log', 'json', 'xml', 'md', 'js', 'jsx', 'ts', 'tsx',
+      'css', 'scss', 'sass', 'html', 'htm', 'csv', 'sql', 'sh',
+      'yaml', 'yml', 'toml', 'ini', 'conf', 'config', 'py', 'java',
+      'c', 'cpp', 'h', 'hpp', 'go', 'rs', 'rb', 'php', 'vue', 'svelte'
+    ];
+    
+    return compressibleExts.includes(ext);
+  }
+
+  // NEW: Execute chunked upload with compression support
+  async function executeChunkedUpload(taskObj) {
+    const file = taskObj.file;
+    const targetDev = taskObj.targetDev;
+    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunk size
+    const totalChunks = taskObj.totalChunks;
+    const taskId = taskObj.id;
+    const useCompression = shouldCompressFile(file.name, file.size);
+
+    if (useCompression) {
+      taskObj.compressionEnabled = true;
+      taskObj.originalSize = file.size;
+    }
 
     // Link file transfer into peer chat timeline if targetDev exists
     let chatFileItem = null;
@@ -618,16 +682,34 @@
           'x-chunk-count': totalChunks.toString()
         };
 
+        // NEW: Add compression flag to headers
+        if (useCompression) {
+          headers['x-compressed'] = 'gzip';
+          headers['x-original-size'] = file.size.toString();
+        }
+
         if (targetDev && targetDev.ip) {
           headers['x-target-ip'] = targetDev.ip;
           headers['x-target-port'] = (targetDev.port || 8899).toString();
           headers['x-target-name'] = encodeURIComponent(targetDev.name || 'Mobile');
         }
 
+        // NEW: Compress chunk if enabled (client-side using CompressionStream API)
+        let bodyToSend = chunkBlob;
+        if (useCompression && typeof CompressionStream !== 'undefined') {
+          try {
+            const stream = chunkBlob.stream().pipeThrough(new CompressionStream('gzip'));
+            bodyToSend = await new Response(stream).blob();
+          } catch (compressionErr) {
+            console.warn('Compression failed, sending uncompressed:', compressionErr);
+            headers['x-compressed'] = 'none';
+          }
+        }
+
         const res = await fetch('/api/v1/transfer/upload', {
           method: 'POST',
           headers: headers,
-          body: chunkBlob
+          body: bodyToSend
         });
 
         if (!res.ok) {
@@ -645,7 +727,6 @@
           const speedBytesPerSec = deltaBytes / Math.max(0.1, deltaSec);
           taskObj.speed = formatSpeed(speedBytesPerSec);
           
-          // NEW: Calculate ETA
           const remainingBytes = file.size - taskObj.bytesUploaded;
           taskObj.eta = formatETA(remainingBytes, speedBytesPerSec);
           
@@ -673,7 +754,7 @@
       } catch (err) {
         console.error(err);
         taskObj.status = 'failed';
-        taskObj.speed = '0 B/s';
+        taskObj.speed = '中断';
         renderTransfersList();
         updateTaskBadges();
         if (chatFileItem) {
@@ -713,6 +794,12 @@
     }
   }
 
+  // Legacy function for chat file transfers - now uses queue system
+  async function startChunkedUploadTask(file, specificTargetDev = null) {
+    enqueueTransferTask(file, specificTargetDev);
+    processTransferQueue();
+  }
+
   function renderTransfersList() {
     if (!dom.transfersList) return;
 
@@ -726,9 +813,20 @@
       const pct = t.fileSize === 0 ? 100 : Math.min(100, Math.round((t.bytesUploaded / t.fileSize) * 100));
       const isDone = t.status === 'done';
       const isFailed = t.status === 'failed';
+      const isQueued = t.status === 'queued';
+      const isTransferring = t.status === 'transferring';
+
+      // NEW: Display compression and concurrent status
+      let statusBadgeText = '';
+      if (isDone) statusBadgeText = '已完成';
+      else if (isFailed) statusBadgeText = '失败';
+      else if (isQueued) statusBadgeText = `队列 #${state.transferQueue.findIndex(task => task.id === t.id) + 1}`;
+      else statusBadgeText = `${pct}%`;
+
+      const compressionBadge = t.compressionEnabled ? `<span style="font-size:10px;color:var(--success);margin-left:4px;padding:2px 6px;background:var(--success-bg);border-radius:4px;">压缩</span>` : '';
 
       return `
-        <div class="transfer-item">
+        <div class="transfer-item ${isTransferring ? 'active-transfer' : ''}">
           <div class="transfer-head">
             <span class="transfer-file-title">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -737,13 +835,14 @@
               </svg>
               <span>${escapeHtml(t.fileName)}</span>
               ${t.targetName ? `<span style="font-size:11px;color:var(--accent);margin-left:6px;font-weight:600;">[${escapeHtml(t.targetName)}]</span>` : ''}
+              ${compressionBadge}
             </span>
-            <span class="transfer-status-badge ${isDone ? 'status-done' : (isFailed ? 'status-failed' : 'status-transferring')}">
-              ${isDone ? '已完成' : (isFailed ? '失败' : `${pct}%`)}
+            <span class="transfer-status-badge ${isDone ? 'status-done' : (isFailed ? 'status-failed' : (isQueued ? 'status-queued' : 'status-transferring'))}">
+              ${statusBadgeText}
             </span>
           </div>
           <div class="progress-track">
-            <div class="progress-fill" style="width: ${pct}%;"></div>
+            <div class="progress-fill ${isTransferring ? 'active' : ''}" style="width: ${pct}%;"></div>
           </div>
           <div class="transfer-foot">
             <span>${formatBytes(t.bytesUploaded)} / ${formatBytes(t.fileSize)} (${t.currentChunk}/${t.totalChunks} 块)</span>
@@ -1648,6 +1747,19 @@
 
   // 13. Vault storage settings management
   function initSettingsEvents() {
+    // NEW: Compression toggle event listener
+    const compressionToggle = document.getElementById('compressionToggle');
+    if (compressionToggle) {
+      compressionToggle.checked = state.compressionEnabled;
+      compressionToggle.addEventListener('change', (e) => {
+        state.compressionEnabled = e.target.checked;
+        try {
+          localStorage.setItem('safedrop_compression_enabled', state.compressionEnabled ? 'true' : 'false');
+        } catch (_) {}
+        showToast(state.compressionEnabled ? '智能压缩传输已启用' : '智能压缩传输已关闭');
+      });
+    }
+
     if (dom.saveDownloadDirBtn && dom.customDownloadDirInput) {
       dom.saveDownloadDirBtn.addEventListener('click', async () => {
         const newDir = dom.customDownloadDirInput.value.trim();

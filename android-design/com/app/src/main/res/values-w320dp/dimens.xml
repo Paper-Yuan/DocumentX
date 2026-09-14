@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Small Screen Optimizations (< 360dp width) -->
+    <!-- Reduced spacing for compact displays -->
+    <dimen name="spacing_small">6dp</dimen>
+    <dimen name="spacing_medium">10dp</dimen>
+    <dimen name="spacing_large">12dp</dimen>
+    <dimen name="spacing_xlarge">16dp</dimen>
+    <dimen name="spacing_xxlarge">20dp</dimen>
+    
+    <!-- Compact card padding -->
+    <dimen name="card_padding">12dp</dimen>
+    <dimen name="card_padding_compact">10dp</dimen>
+    
+    <!-- Reduced typography for small screens -->
+    <dimen name="text_size_headline">16sp</dimen>
+    <dimen name="text_size_title">15sp</dimen>
+    <dimen name="text_size_body">13sp</dimen>
+    <dimen name="text_size_body_small">12sp</dimen>
+    <dimen name="text_size_caption">11sp</dimen>
+    <dimen name="text_size_caption_small">10sp</dimen>
+    
+    <!-- Maintain minimum touch targets -->
+    <dimen name="touch_target_min">48dp</dimen>
+    <dimen name="icon_button_size">48dp</dimen>
+    <dimen name="button_height_standard">48dp</dimen>
+    
+    <!-- Compact bottom navigation -->
+    <dimen name="bottom_nav_height">72dp</dimen>
+    <dimen name="bottom_nav_icon_size">22dp</dimen>
+    <dimen name="bottom_nav_text_size">11sp</dimen>
+</resources>

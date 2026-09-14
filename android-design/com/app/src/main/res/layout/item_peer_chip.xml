@@ -3,10 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/chipCard"
     android:layout_width="wrap_content"
-    android:layout_height="38dp"
-    android:layout_marginEnd="8dp"
+    android:layout_height="@dimen/button_height_compact"
+    android:layout_marginEnd="@dimen/spacing_small"
+    android:clickable="true"
+    android:focusable="true"
     app:cardBackgroundColor="@color/surface_dark"
-    app:cardCornerRadius="19dp"
+    app:cardCornerRadius="22dp"
     app:strokeColor="@color/border_dark"
     app:strokeWidth="1dp">
 
@@ -14,13 +16,14 @@
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:gravity="center_vertical"
+        android:minHeight="@dimen/button_height_compact"
         android:orientation="horizontal"
-        android:paddingHorizontal="12dp">
+        android:paddingHorizontal="@dimen/spacing_medium">
 
         <ImageView
             android:id="@+id/ivChipIcon"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
             android:src="@drawable/ic_device_pc"
             app:tint="@color/secondary" />
 
@@ -28,17 +31,17 @@
             android:id="@+id/tvChipName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="@dimen/spacing_small"
             android:text="Windows PC"
             android:textColor="@color/text_primary_dark"
-            android:textSize="12sp"
+            android:textSize="@dimen/text_size_caption"
             android:textStyle="bold" />
 
         <View
             android:id="@+id/vChipStatusDot"
-            android:layout_width="7dp"
-            android:layout_height="7dp"
-            android:layout_marginStart="6dp"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:layout_marginStart="@dimen/spacing_xsmall"
             android:background="@drawable/bg_circle"
             android:backgroundTint="@color/success" />
 

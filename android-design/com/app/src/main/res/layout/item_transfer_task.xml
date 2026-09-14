@@ -14,7 +14,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="@dimen/card_padding">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -24,18 +24,18 @@
 
             <ImageView
                 android:id="@+id/ivTaskDirection"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:background="@drawable/ic_launcher"
                 android:backgroundTint="@color/surface_variant_dark"
-                android:padding="6dp"
+                android:padding="@dimen/spacing_small"
                 android:src="@drawable/ic_download"
                 app:tint="@color/secondary" />
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
+                android:layout_marginStart="@dimen/spacing_medium"
                 android:layout_weight="1"
                 android:orientation="vertical">
 
@@ -47,17 +47,17 @@
                     android:singleLine="true"
                     android:text="example_file.mp4"
                     android:textColor="@color/text_primary_dark"
-                    android:textSize="14sp"
+                    android:textSize="@dimen/text_size_body"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/tvTaskDevice"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="@dimen/spacing_xxxsmall"
                     android:text="来自: Windows 桌面中枢端"
                     android:textColor="@color/text_secondary_dark"
-                    android:textSize="11sp" />
+                    android:textSize="@dimen/text_size_caption_small" />
             </LinearLayout>
 
             <TextView
@@ -77,12 +77,12 @@
             android:id="@+id/pbTaskProgress"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/spacing_medium"
             android:progress="0"
             app:indicatorColor="@color/primary"
             app:trackColor="@color/surface_variant_dark"
-            app:trackCornerRadius="4dp"
-            app:trackThickness="6dp" />
+            app:trackCornerRadius="@dimen/progress_bar_corner_radius"
+            app:trackThickness="@dimen/progress_bar_height" />
 
         <LinearLayout
             android:layout_width="match_parent"

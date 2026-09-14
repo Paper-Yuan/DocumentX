@@ -11,6 +11,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const dgram = require('dgram');
+const zlib = require('zlib');
 const { execFile, spawn } = require('child_process');
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8899;
@@ -617,7 +618,7 @@ function handleApi(pathname, req, res, urlObj) {
     return;
   }
 
-  // 7. Streaming chunk upload POST /api/v1/transfer/upload
+  // 7. Streaming chunk upload POST /api/v1/transfer/upload (NEW: with compression support)
   if (pathname === '/api/v1/transfer/upload' && req.method === 'POST') {
     const targetIp = req.headers['x-target-ip'];
     const targetPort = parseInt(req.headers['x-target-port'] || '8899', 10);
@@ -690,13 +691,28 @@ function handleApi(pathname, req, res, urlObj) {
     const chunkIndex = parseInt(req.headers['x-chunk-index'] || '0', 10);
     const totalChunks = parseInt(req.headers['x-chunk-count'] || '1', 10);
     const fileSize = parseInt(req.headers['x-file-size'] || '0', 10);
+    
+    // NEW: Check if chunk is compressed
+    const isCompressed = req.headers['x-compressed'] === 'gzip';
 
     const partPath = path.join(DOWNLOAD_DIR, `.${taskId}_${safeName}.part`);
 
-    // Stream append to temporary chunk file for backpressure and low memory footprint
+    // NEW: Create decompression pipeline if compressed
     const writeStream = fs.createWriteStream(partPath, { flags: 'a' });
+    
+    let dataStream = req;
+    if (isCompressed) {
+      const gunzip = zlib.createGunzip();
+      dataStream = req.pipe(gunzip);
+      
+      gunzip.on('error', (err) => {
+        console.error('[Upload] Decompression error:', err);
+        writeStream.destroy();
+        jsonResponse(res, 500, { error: 'Decompression failed: ' + err.message });
+      });
+    }
 
-    req.pipe(writeStream);
+    dataStream.pipe(writeStream);
 
     writeStream.on('finish', () => {
       // Check if all chunks received
@@ -707,16 +723,18 @@ function handleApi(pathname, req, res, urlObj) {
             console.error('[Upload] Rename failed:', err);
           } else {
             const finalName = path.basename(finalPath);
+            const actualSize = fs.statSync(finalPath).size;
             transferHistory.unshift({
               taskId,
               fileName: finalName,
-              fileSize: fileSize || fs.statSync(finalPath).size,
+              fileSize: fileSize || actualSize,
               sender: clientIp,
               status: 'completed',
               path: finalPath,
+              compressed: isCompressed,
               time: new Date().toLocaleTimeString()
             });
-            console.log(`[SafeDrop] File successfully saved to vault: ${finalPath}`);
+            console.log(`[SafeDrop] File successfully saved to vault: ${finalPath}${isCompressed ? ' (decompressed)' : ''}`);
           }
         });
       }
@@ -724,7 +742,8 @@ function handleApi(pathname, req, res, urlObj) {
         code: 0,
         chunk_index: chunkIndex,
         total_chunks: totalChunks,
-        status: chunkIndex + 1 >= totalChunks ? 'completed' : 'chunk_received'
+        status: chunkIndex + 1 >= totalChunks ? 'completed' : 'chunk_received',
+        compressed: isCompressed
       });
     });
 

@@ -23,60 +23,60 @@
             app:subtitle="@string/app_subtitle"
             app:subtitleTextColor="@color/text_secondary_dark">
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end|center_vertical"
-                android:layout_marginEnd="12dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end|center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_medium"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
                 <!-- My Pairing QR code action button (Icon only) -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnShowMyQr"
                     style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
-                    android:layout_width="38dp"
-                    android:layout_height="38dp"
-                    android:layout_marginEnd="8dp"
+                    android:layout_width="@dimen/icon_button_compact"
+                    android:layout_height="@dimen/icon_button_compact"
+                    android:layout_marginEnd="@dimen/spacing_small"
                     android:contentDescription="生成我的配对码"
                     android:insetLeft="0dp"
                     android:insetTop="0dp"
                     android:insetRight="0dp"
                     android:insetBottom="0dp"
                     android:padding="0dp"
-                    app:cornerRadius="19dp"
+                    app:cornerRadius="22dp"
                     app:icon="@drawable/ic_qr_code"
                     app:iconGravity="textStart"
                     app:iconPadding="0dp"
-                    app:iconSize="20dp"
+                    app:iconSize="@dimen/icon_size_small"
                     app:iconTint="@color/secondary" />
 
                 <!-- Dynamic PIN pairing action button (Icon only) -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnInputPin"
                     style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
-                    android:layout_width="38dp"
-                    android:layout_height="38dp"
-                    android:layout_marginEnd="8dp"
+                    android:layout_width="@dimen/icon_button_compact"
+                    android:layout_height="@dimen/icon_button_compact"
+                    android:layout_marginEnd="@dimen/spacing_small"
                     android:contentDescription="输入 PIN 配对"
                     android:insetLeft="0dp"
                     android:insetTop="0dp"
                     android:insetRight="0dp"
                     android:insetBottom="0dp"
                     android:padding="0dp"
-                    app:cornerRadius="19dp"
+                    app:cornerRadius="22dp"
                     app:icon="@drawable/ic_key"
                     app:iconGravity="textStart"
                     app:iconPadding="0dp"
-                    app:iconSize="20dp"
+                    app:iconSize="@dimen/icon_size_small"
                     app:iconTint="@color/secondary" />
 
                 <!-- Scan QR code action button (Icon only) -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnScanQr"
                     style="@style/Widget.Material3.Button.IconButton.Filled"
-                    android:layout_width="38dp"
-                    android:layout_height="38dp"
+                    android:layout_width="@dimen/icon_button_compact"
+                    android:layout_height="@dimen/icon_button_compact"
                     android:contentDescription="扫码配对"
                     android:insetLeft="0dp"
                     android:insetTop="0dp"
@@ -84,11 +84,11 @@
                     android:insetBottom="0dp"
                     android:padding="0dp"
                     app:backgroundTint="@color/primary"
-                    app:cornerRadius="19dp"
+                    app:cornerRadius="22dp"
                     app:icon="@drawable/ic_scan"
                     app:iconGravity="textStart"
                     app:iconPadding="0dp"
-                    app:iconSize="20dp"
+                    app:iconSize="@dimen/icon_size_small"
                     app:iconTint="@color/on_primary" />
 
             </LinearLayout>
@@ -102,7 +102,7 @@
         android:id="@+id/pagesContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginBottom="96dp"
+        android:layout_marginBottom="@dimen/bottom_nav_height"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <!-- ============================================== -->
@@ -140,25 +140,25 @@
 
                         <!-- Ambient Beacon Icon -->
                         <FrameLayout
-                            android:layout_width="44dp"
-                            android:layout_height="44dp">
+                            android:layout_width="@dimen/touch_target_min"
+                            android:layout_height="@dimen/touch_target_min">
 
                             <View
                                 android:id="@+id/beaconOuterRing"
-                                android:layout_width="44dp"
-                                android:layout_height="44dp"
+                                android:layout_width="@dimen/touch_target_min"
+                                android:layout_height="@dimen/touch_target_min"
                                 android:alpha="0.2"
                                 android:background="@drawable/bg_circle"
                                 android:backgroundTint="@color/primary" />
 
                             <ImageView
                                 android:id="@+id/beaconInnerIcon"
-                                android:layout_width="32dp"
-                                android:layout_height="32dp"
+                                android:layout_width="36dp"
+                                android:layout_height="36dp"
                                 android:layout_gravity="center"
                                 android:background="@drawable/bg_circle"
                                 android:backgroundTint="@color/primary"
-                                android:padding="7dp"
+                                android:padding="8dp"
                                 android:src="@drawable/ic_radar"
                                 app:tint="@color/on_primary" />
 
@@ -262,11 +262,13 @@
                     <com.google.android.material.card.MaterialCardView
                         android:id="@+id/cardSendMedia"
                         android:layout_width="0dp"
-                        android:layout_height="80dp"
-                        android:layout_marginEnd="8dp"
+                        android:layout_height="88dp"
+                        android:layout_marginEnd="@dimen/spacing_small"
                         android:layout_weight="1"
+                        android:clickable="true"
+                        android:focusable="true"
                         app:cardBackgroundColor="@color/surface_dark"
-                        app:cardCornerRadius="16dp"
+                        app:cardCornerRadius="@dimen/card_corner_radius"
                         app:strokeColor="@color/border_dark"
                         app:strokeWidth="1dp">
 
@@ -274,11 +276,12 @@
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
                             android:gravity="center"
-                            android:orientation="vertical">
+                            android:orientation="vertical"
+                            android:padding="@dimen/spacing_medium">
 
                             <ImageView
-                                android:layout_width="26dp"
-                                android:layout_height="26dp"
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
                                 android:src="@drawable/ic_send"
                                 app:tint="@color/secondary" />
 
@@ -286,21 +289,23 @@
                                 android:id="@+id/tvSendMedia"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
+                                android:layout_marginTop="@dimen/spacing_small"
                                 android:text="@string/select_from_gallery"
                                 android:textColor="@color/text_primary_dark"
-                                android:textSize="12sp" />
+                                android:textSize="@dimen/text_size_caption" />
                         </LinearLayout>
                     </com.google.android.material.card.MaterialCardView>
 
                     <com.google.android.material.card.MaterialCardView
                         android:id="@+id/cardSendFiles"
                         android:layout_width="0dp"
-                        android:layout_height="80dp"
-                        android:layout_marginStart="8dp"
+                        android:layout_height="88dp"
+                        android:layout_marginStart="@dimen/spacing_small"
                         android:layout_weight="1"
+                        android:clickable="true"
+                        android:focusable="true"
                         app:cardBackgroundColor="@color/surface_dark"
-                        app:cardCornerRadius="16dp"
+                        app:cardCornerRadius="@dimen/card_corner_radius"
                         app:strokeColor="@color/border_dark"
                         app:strokeWidth="1dp">
 
@@ -308,11 +313,12 @@
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
                             android:gravity="center"
-                            android:orientation="vertical">
+                            android:orientation="vertical"
+                            android:padding="@dimen/spacing_medium">
 
                             <ImageView
-                                android:layout_width="26dp"
-                                android:layout_height="26dp"
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
                                 android:src="@drawable/ic_download"
                                 app:tint="@color/success" />
 
@@ -320,10 +326,10 @@
                                 android:id="@+id/tvSendFiles"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
+                                android:layout_marginTop="@dimen/spacing_small"
                                 android:text="@string/select_from_files"
                                 android:textColor="@color/text_primary_dark"
-                                android:textSize="12sp" />
+                                android:textSize="@dimen/text_size_caption" />
                         </LinearLayout>
                     </com.google.android.material.card.MaterialCardView>
 
@@ -999,12 +1005,15 @@
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="@dimen/bottom_nav_height"
         android:layout_gravity="bottom"
         android:background="@color/surface_dark"
+        android:elevation="8dp"
         app:labelVisibilityMode="labeled"
+        app:itemIconSize="@dimen/bottom_nav_icon_size"
         app:itemIconTint="@color/text_secondary_dark"
         app:itemTextColor="@color/text_secondary_dark"
+        app:itemRippleColor="@color/primary"
         app:menu="@menu/bottom_nav_menu" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

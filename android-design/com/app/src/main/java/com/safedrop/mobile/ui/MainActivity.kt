@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity() {
     private val cryptoEngine = CryptoEngine()
     private lateinit var storageHelper: ScopedStorageHelper
     private lateinit var prefs: SharedPreferences
+    private lateinit var deviceNameCache: com.safedrop.mobile.core.cache.DeviceNameCache
 
     // Embedded HTTP receiver server on mobile
     private var mobileTransferServer: MobileTransferServer? = null
@@ -159,6 +160,7 @@ class MainActivity : AppCompatActivity() {
 
         multicastLockHelper = MulticastLockHelper(this)
         storageHelper = ScopedStorageHelper(this)
+        deviceNameCache = com.safedrop.mobile.core.cache.DeviceNameCache(this)
 
         initViews()
         initServices()
@@ -319,6 +321,13 @@ class MainActivity : AppCompatActivity() {
         binding.rvVaultFiles.adapter = vaultFileAdapter
         binding.btnRefreshVault.setOnClickListener {
             refreshVaultFiles()
+        }
+
+        // Pull-to-refresh for device list (refresh device names)
+        binding.rvDevices.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+            if (scrollY < oldScrollY && scrollY < -100) {
+                refreshDeviceNames()
+            }
         }
 
         // 10. Bottom navigation bar listener - Switches between 4 independent full pages!
@@ -525,6 +534,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.rvDevices.visibility = View.VISIBLE
             binding.tvEmptyDevices.visibility = View.GONE
+            deviceAdapter.setDeviceNameCache(deviceNameCache.getDeviceNames())
             deviceAdapter.updateDevices(discoveredDevices)
         }
         updatePeerChatUI()
@@ -1030,6 +1040,7 @@ class MainActivity : AppCompatActivity() {
 
         scanAndRefreshLanTopology()
         refreshVaultFiles()
+        refreshDeviceNames()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -1690,6 +1701,42 @@ class MainActivity : AppCompatActivity() {
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         if (!powerManager.isIgnoringBatteryOptimizations(packageName) && !hasBatteryOptimizationPrompted) {
             requestBatteryOptimizationExemption()
+        }
+    }
+
+    /**
+     * Fetch device custom names from desktop hub and update cache
+     */
+    private fun refreshDeviceNames() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Try to fetch from all discovered PC devices
+                val pcDevices = discoveredDevices.filter { it.deviceType == "pc" }
+                
+                for (device in pcDevices) {
+                    val names = hubClient.fetchDeviceNames(device.host, device.port)
+                    if (names != null && names.isNotEmpty()) {
+                        deviceNameCache.saveDeviceNames(names)
+                        withContext(Dispatchers.Main) {
+                            updateDeviceListUI()
+                        }
+                        break // Successfully fetched from one hub
+                    }
+                }
+                
+                // Fallback: try connectedHost if no PC devices available
+                if (pcDevices.isEmpty() && connectedHost.isNotEmpty() && connectedHost != "127.0.0.1") {
+                    val names = hubClient.fetchDeviceNames(connectedHost, connectedPort)
+                    if (names != null && names.isNotEmpty()) {
+                        deviceNameCache.saveDeviceNames(names)
+                        withContext(Dispatchers.Main) {
+                            updateDeviceListUI()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Silently handle fetch errors, use cached names
+            }
         }
     }
 }

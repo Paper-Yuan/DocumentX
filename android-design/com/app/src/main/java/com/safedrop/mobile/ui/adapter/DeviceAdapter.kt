@@ -27,6 +27,7 @@ class DeviceAdapter(
 
     private val devices = mutableListOf<DiscoveredDevice>()
     private var themeMode: String = "dark"
+    private var deviceNameCache: Map<String, String> = emptyMap()
 
     fun updateDevices(newDevices: List<DiscoveredDevice>) {
         devices.clear()
@@ -39,13 +40,30 @@ class DeviceAdapter(
         notifyDataSetChanged()
     }
 
+    fun setDeviceNameCache(cache: Map<String, String>) {
+        this.deviceNameCache = cache
+        notifyDataSetChanged()
+    }
+
+    private fun getDisplayName(device: DiscoveredDevice): String {
+        // Priority: customName > name > IP fallback
+        val customName = deviceNameCache[device.fingerprint]
+        return when {
+            !customName.isNullOrEmpty() -> customName
+            device.name.isNotEmpty() -> device.name
+            else -> "Device (${device.host})"
+        }
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DeviceViewHolder {
         val binding = ItemDeviceBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return DeviceViewHolder(binding)
     }
 
     override fun onBindViewHolder(holder: DeviceViewHolder, position: Int) {
-        holder.bind(devices[position], themeMode, onDeviceClick, onSendClick, onChatClick)
+        val device = devices[position]
+        val displayName = getDisplayName(device)
+        holder.bind(device, displayName, themeMode, onDeviceClick, onSendClick, onChatClick)
     }
 
     override fun getItemCount(): Int = devices.size
@@ -53,6 +71,7 @@ class DeviceAdapter(
     class DeviceViewHolder(private val binding: ItemDeviceBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(
             device: DiscoveredDevice,
+            displayName: String,
             theme: String,
             onClick: (DiscoveredDevice) -> Unit,
             onSend: (DiscoveredDevice) -> Unit,
@@ -68,7 +87,7 @@ class DeviceAdapter(
             )
             binding.tvDevicePlatformTag.text = if (isMobile) "手机端" else "电脑端"
 
-            binding.tvDeviceName.text = device.name
+            binding.tvDeviceName.text = displayName
             binding.tvDeviceAddress.text = "${device.host}:${device.port}"
             binding.tvFingerprint.text = "指纹: ${device.fingerprint.ifEmpty { "待配对" }}"
 

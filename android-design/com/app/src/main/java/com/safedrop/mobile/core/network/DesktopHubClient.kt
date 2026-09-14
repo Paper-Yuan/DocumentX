@@ -249,6 +249,33 @@ class DesktopHubClient {
             false
         }
     }
+
+    /**
+     * 9. Fetch device custom names from desktop (GET /api/v1/devices/names)
+     */
+    suspend fun fetchDeviceNames(host: String, port: Int): Map<String, String>? = withContext(Dispatchers.IO) {
+        try {
+            val url = "http://$host:$port/api/v1/devices/names"
+            val request = Request.Builder().url(url).get().build()
+            val response = okHttpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                val body = response.body?.string()
+                val jsonObj = gson.fromJson(body, JsonObject::class.java)
+                if (jsonObj != null && jsonObj.has("deviceNames")) {
+                    val deviceNamesObj = jsonObj.getAsJsonObject("deviceNames")
+                    val result = mutableMapOf<String, String>()
+                    for (key in deviceNamesObj.keySet()) {
+                        result[key] = deviceNamesObj.get(key).asString
+                    }
+                    return@withContext result
+                }
+            }
+            null
+        } catch (e: Exception) {
+            Log.w(tag, "Fetch device names failed: ${e.message}")
+            null
+        }
+    }
 }
 
 
