@@ -544,7 +544,7 @@
 
   async function startChunkedUploadTask(file, specificTargetDev = null) {
     const targetDev = specificTargetDev || state.targetDevice;
-    const CHUNK_SIZE = 1024 * 1024; // 1MB chunk size
+    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunk size (optimized for gigabit LAN)
     const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 

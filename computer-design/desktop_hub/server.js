@@ -905,7 +905,7 @@ function jsonResponse(res, statusCode, data) {
 
 function readJsonBody(req, callback) {
   let body = '';
-  const MAX_SIZE = 1 * 1024 * 1024; // 1MB payload limit to prevent DoS
+  const MAX_SIZE = 4 * 1024 * 1024; // 4MB payload limit (optimized for LAN transfer)
   let exceeded = false;
   req.on('data', chunk => {
     body += chunk;
