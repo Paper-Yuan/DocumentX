@@ -18,9 +18,12 @@ const { spawn } = require('child_process');
 
 const PROTO = require('./computer-design/desktop_hub/crypto_protocol');
 
-const HUB_PORT = 8791;
-const TLS_PORT = 8792;
-const DEST_PORT = 8793;
+// Ports are derived from the process id so back-to-back runs cannot collide with a listener
+// that a previous hub has not released yet (which would otherwise stall the run).
+const PORT_BASE = 17000 + (process.pid % 1000) * 10;
+const HUB_PORT = PORT_BASE;
+const TLS_PORT = PORT_BASE + 1;
+const DEST_PORT = PORT_BASE + 2;
 const LOOPBACK = '127.0.0.1';
 const VAULT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'safedrop-vault-'));
 
@@ -52,12 +55,12 @@ function check(name, fn) {
   }
 }
 
-function request(method, urlPath, { headers = {}, body = null, host = LAN_HOST, port = HUB_PORT, tls = false } = {}) {
+function request(method, urlPath, { headers = {}, body = null, host = LAN_HOST, port = HUB_PORT, tls = false, timeoutMs = 10000 } = {}) {
   return new Promise((resolve, reject) => {
     const transport = tls ? https : http;
     const options = tls
-      ? { host, port, path: urlPath, method, headers, rejectUnauthorized: false }
-      : { host, port, path: urlPath, method, headers };
+      ? { host, port, path: urlPath, method, headers, rejectUnauthorized: false, timeout: timeoutMs }
+      : { host, port, path: urlPath, method, headers, timeout: timeoutMs };
     const req = transport.request(options, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
@@ -67,6 +70,9 @@ function request(method, urlPath, { headers = {}, body = null, host = LAN_HOST, 
         body: Buffer.concat(chunks)
       }));
     });
+    // Without this a request to a port nobody is listening on can hang indefinitely on some
+    // platforms, turning a clear failure into a stalled test run.
+    req.on('timeout', () => req.destroy(new Error(`request timed out after ${timeoutMs}ms: ${method} ${urlPath}`)));
     req.on('error', reject);
     if (body) req.write(body);
     req.end();
@@ -125,9 +131,9 @@ async function main() {
       PORT: String(HUB_PORT),
       TLS_PORT: String(TLS_PORT),
       // Keep the test from rewriting the repository's config.json.
-      SAFEDROP_CONFIG: path.join(VAULT_DIR, 'config.json'),
-      // Permit the stub destination as a relay target (these local addresses are not RFC1918).
-      SAFEDROP_RELAY_TARGETS: localCandidates.join(',')
+      SAFEDROP_CONFIG: path.join(VAULT_DIR, 'config.json')
+      // Note: no SAFEDROP_RELAY_TARGETS. The stub destination sits on this machine's own
+      // subnet, which the relay guard must allow by default.
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -148,6 +154,20 @@ async function main() {
     await new Promise((r) => setTimeout(r, 250));
   }
   assert.ok(ready, `hub did not become ready:\n${hubLog}`);
+
+  // The HTTPS listener starts separately from the HTTP one, so confirm it before later
+  // sections depend on it; otherwise a port conflict surfaces as a hang instead of a failure.
+  let tlsReady = false;
+  for (let i = 0; i < 40; i++) {
+    try {
+      const r = await request('GET', '/health', { host: LOOPBACK, tls: true, port: TLS_PORT, timeoutMs: 2000 });
+      if (r.status === 200) { tlsReady = true; break; }
+    } catch (_) {}
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  if (!tlsReady) {
+    console.log(`\n!! HTTPS listener did not come up on ${TLS_PORT}. Hub output:\n${hubLog}\n`);
+  }
 
   // Pick a LAN address so remote requests look like real LAN traffic.
   for (const name of Object.keys(os.networkInterfaces())) {
@@ -377,6 +397,12 @@ async function main() {
   } else {
   // The sender negotiates its own session with the destination phone; the hub holds no such
   // key, so it must forward the sealed bytes without unwrapping them.
+  // The destination is on this machine's own subnet and was NOT allowlisted via the
+  // environment, so reaching it also proves the same-subnet rule works by default.
+  const lanGuard = require('./computer-design/desktop_hub/lan_guard');
+  check('the relay destination is on the hub own subnet', () => {
+    assert.ok(lanGuard.isOnLocalSubnet(RELAY_DEST_HOST), `${RELAY_DEST_HOST} should be on-link`);
+  });
   const destKeyPair = PROTO.generateKeyPair('x25519');
   const destRawPub = PROTO.exportRawPublicKey(destKeyPair, 'x25519');
   const senderKeyPair = PROTO.generateKeyPair('x25519');

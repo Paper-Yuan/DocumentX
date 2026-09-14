@@ -108,6 +108,41 @@ setTimeout(async () => {
     });
     assert(ssrfRes.status === 400, 'SSRF to cloud metadata 169.254.169.254 rejected with 400');
 
+    // Test 2.5.1: Relay target validation rules (lan_guard.js)
+    // The same-subnet rule lets a hub on an unusual (non-RFC1918) network relay to its own
+    // peers without configuration, so the ranges that must stay blocked need explicit cover.
+    const lanGuard = require('./computer-design/desktop_hub/lan_guard');
+
+    const blocked = [
+      ['169.254.169.254', 'cloud metadata'],
+      ['169.254.1.1', 'any link-local address'],
+      ['127.0.0.1', 'loopback'],
+      ['127.0.0.2', 'loopback, not just .1'],
+      ['0.0.0.0', 'unspecified'],
+      ['203.0.113.5', 'public TEST-NET-3'],
+      ['8.8.8.8', 'public DNS'],
+      ['not-an-ip', 'malformed input'],
+      ['999.1.1.1', 'out-of-range octet']
+    ];
+    for (const [ip, label] of blocked) {
+      assert(!lanGuard.isAllowedRelayTarget(ip), `Relay to ${ip} (${label}) must stay blocked`);
+    }
+
+    for (const ip of ['192.168.1.50', '10.8.0.4', '172.16.5.5']) {
+      assert(lanGuard.isAllowedRelayTarget(ip), `Relay to RFC1918 ${ip} must be allowed`);
+    }
+
+    // A host on this machine's own subnet is an on-link peer and must be allowed by default,
+    // which is what makes non-RFC1918 networks work without SAFEDROP_RELAY_TARGETS.
+    const ownSubnet = lanGuard.localSubnets().find((s) => ((~s.mask) >>> 0) >= 4);
+    if (ownSubnet) {
+      const peer = lanGuard.uintToIpv4((ownSubnet.network + 2) >>> 0);
+      assert(
+        lanGuard.isAllowedRelayTarget(peer),
+        `Peer ${peer} on the hub's own subnet ${lanGuard.uintToIpv4(ownSubnet.network)} must be allowed`
+      );
+    }
+
     // Test 2.6: Static file directory traversal attack prevention: server.js source code must NEVER be returned
     const traversalRes = await fetch('http://127.0.0.1:9988/../../server.js');
     const traversalText = await traversalRes.text();

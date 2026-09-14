@@ -18,6 +18,7 @@ const { execFile, spawn } = require('child_process');
 const https = require('https');
 const cryptoProtocol = require('./crypto_protocol');
 const tlsSelfSigned = require('./tls_selfsigned');
+const lanGuard = require('./lan_guard');
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8899;
 const UDP_PORT = 8890;
@@ -129,24 +130,11 @@ function saveDeviceNames() {
   }
 }
 
-// SSRF validation: only forward to valid private RFC1918 IPv4 addresses
+// SSRF validation for relay targets: RFC1918 ranges, a destination on one of this machine's
+// own subnets, or an explicitly allowlisted address. See lan_guard.js for the reasoning.
 function isPrivateLanIp(ip) {
-  if (!ip || typeof ip !== 'string') return false;
-  if (/^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})$/.test(ip)) {
-    return true;
-  }
-  // Extra relay destinations for networks that do not use RFC1918 ranges (VPN overlays,
-  // lab subnets). Empty by default so the SSRF guard keeps rejecting everything else.
-  return RELAY_TARGET_ALLOWLIST.has(ip);
+  return lanGuard.isAllowedRelayTarget(ip);
 }
-
-/** Optional operator-supplied relay destinations: SAFEDROP_RELAY_TARGETS=10.8.0.4,10.8.0.5 */
-const RELAY_TARGET_ALLOWLIST = new Set(
-  (process.env.SAFEDROP_RELAY_TARGETS || '')
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-);
 
 // Path traversal and Windows reserved filename defense filter
 function sanitizeFileName(inputName) {
@@ -1051,37 +1039,52 @@ function handleApi(pathname, req, res, urlObj) {
 
     // Shared completion handler for both the encrypted and plaintext paths.
     function finalizeUpload() {
-      // Check if all chunks received
+      const respond = (extra) => {
+        jsonResponse(res, 200, {
+          code: 0,
+          chunk_index: chunkIndex,
+          total_chunks: totalChunks,
+          status: chunkIndex + 1 >= totalChunks ? 'completed' : 'chunk_received',
+          compressed: isCompressed,
+          encrypted: isEncrypted,
+          ...extra
+        });
+      };
+
+      // Final chunk: promote the .part file to its final name.
       if (chunkIndex + 1 >= totalChunks) {
         const finalPath = resolveUniqueFilePath(safeName);
+        // Respond only once the rename has actually happened. Reporting "completed" first
+        // would let a client immediately list or download a file that does not exist yet.
         fs.rename(partPath, finalPath, (err) => {
           if (err) {
             console.error('[Upload] Rename failed:', err);
-          } else {
-            const finalName = path.basename(finalPath);
-            const actualSize = fs.statSync(finalPath).size;
-            transferHistory.unshift({
-              taskId,
-              fileName: finalName,
-              fileSize: fileSize || actualSize,
-              sender: clientIp,
-              status: 'completed',
-              path: finalPath,
-              compressed: isCompressed,
-              time: new Date().toLocaleTimeString()
-            });
-            console.log(`[SafeDrop] File successfully saved to vault: ${finalPath}${isCompressed ? ' (decompressed)' : ''}${isEncrypted ? ' (decrypted)' : ''}`);
+            writeStream.destroy();
+            jsonResponse(res, 500, { error: `Failed to finalize file: ${err.message}` });
+            return;
           }
+          const finalName = path.basename(finalPath);
+          let actualSize = fileSize;
+          try {
+            actualSize = fs.statSync(finalPath).size;
+          } catch (_) {}
+          transferHistory.unshift({
+            taskId,
+            fileName: finalName,
+            fileSize: actualSize,
+            sender: clientIp,
+            status: 'completed',
+            path: finalPath,
+            compressed: isCompressed,
+            time: new Date().toLocaleTimeString()
+          });
+          console.log(`[SafeDrop] File successfully saved to vault: ${finalPath}${isCompressed ? ' (decompressed)' : ''}${isEncrypted ? ' (decrypted)' : ''}`);
+          respond({ file_name: finalName, file_size: actualSize });
         });
+        return;
       }
-      jsonResponse(res, 200, {
-        code: 0,
-        chunk_index: chunkIndex,
-        total_chunks: totalChunks,
-        status: chunkIndex + 1 >= totalChunks ? 'completed' : 'chunk_received',
-        compressed: isCompressed,
-        encrypted: isEncrypted
-      });
+
+      respond();
     }
 
     writeStream.on('error', (err) => {
@@ -1507,6 +1510,15 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`   Pairing PIN: ${currentPin}`);
   console.log(`   Vault Dir:   ${DOWNLOAD_DIR}`);
   console.log(`   UDP Beacon:  Port ${UDP_PORT}`);
+
+  // Show which destinations the hub will relay to, so an unexpected refusal is diagnosable.
+  const relaySubnets = lanGuard.describeLocalSubnets();
+  const extraTargets = [...lanGuard.relayTargetAllowlist];
+  console.log(`   Relay Scope: RFC1918${relaySubnets.length ? ' + on-link ' + relaySubnets.join(', ') : ''}${extraTargets.length ? ' + allowlist ' + extraTargets.join(', ') : ''}`);
+  if (!relaySubnets.length && !extraTargets.length) {
+    console.log('   Relay Note:  no local subnet detected; set SAFEDROP_RELAY_TARGETS to relay on this network');
+  }
+
   httpsServer = startTlsListener();
   console.log('====================================================');
 });

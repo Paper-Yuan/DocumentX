@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hub never holds, unwraps, or can read the file content. The destination session id is
   carried separately (`X-Target-Session-Id`) so the hub's own session with the sender is
   never leaked to the receiving device.
+- **Relay targets on the hub's own subnet are allowed by default** (`lan_guard.js`), so
+  networks that do not use RFC1918 ranges (many home routers, VPN overlays, lab subnets)
+  relay without configuration. Loopback, link-local (including cloud metadata
+  `169.254.169.254`) and public addresses stay blocked; other subnets need
+  `SAFEDROP_RELAY_TARGETS`. The effective scope is printed at startup.
 - **Sessions are tracked per peer**, not per app: pairing with one device no longer
   invalidates the session with another, and trust is derived from the live session store
   instead of a set that could claim trust after the session was gone.
