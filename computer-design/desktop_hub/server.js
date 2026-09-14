@@ -24,7 +24,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8899;
 const UDP_PORT = 8890;
 // Single source of truth for the reported version, kept in step with tauri-app/package.json
 // and the Android versionName so the three platforms cannot drift apart.
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const CONFIG_FILE = process.env.SAFEDROP_CONFIG
   ? path.resolve(process.env.SAFEDROP_CONFIG)

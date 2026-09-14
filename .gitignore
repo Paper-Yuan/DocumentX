@@ -73,3 +73,6 @@ Desktop.ini
 .vscode/
 *.swp
 *~
+
+# Agent workspace state
+.zcode/

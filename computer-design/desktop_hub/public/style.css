@@ -1394,6 +1394,14 @@ body.light-theme .theme-icon-dark, body.light-theme .theme-icon-eyecare { displa
   margin-bottom: 16px;
 }
 
+/* Group heading inside a settings card, above its setting-row list. */
+.settings-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin: 0 0 6px;
+}
+
 .setting-row {
   display: flex;
   align-items: center;

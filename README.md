@@ -91,9 +91,18 @@ SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有�
 
 ## 📥 Download
 
-> ⚠️ 构建产物尚未上传到 Release（仓库 `main` 分支不含二进制文件，二进制已在 `.gitignore` 中排除）。当前 Release 页面只有说明、没有附件。
+前往 [Releases](https://github.com/Paper-Yuan/DocumentX/releases/latest) 下载：
 
-现阶段推荐从源码构建，命令见 [快速开始](#-quick-start) 与 [打包](#-打包)。若需要直接分发包，欢迎在 [Issues](https://github.com/Paper-Yuan/DocumentX/issues) 里说明需求。
+| 产物 | 说明 |
+|:---|:---|
+| `SafeDrop-Setup.exe` | Windows 单文件自解压安装包，内置便携 Node 运行时，双击即可安装，无需另外装 Node.js |
+| `app-release.apk` | Android 接收端，需允许"安装未知来源应用" |
+
+> ⚠️ Android 包使用调试密钥签名（`CN=Android Debug`）。它足够用于自用与内部分发，但**不是**发布到应用商店的签名；同一设备上后续版本必须用同一密钥签名才能覆盖安装。
+>
+> 仓库 `main` 分支不含二进制文件（已在 `.gitignore` 中排除），二进制只挂在 Release 附件上。
+
+也可以从源码构建，命令见 [快速开始](#-quick-start) 与 [打包](#-打包)。
 
 **运行要求**
 
@@ -326,11 +335,11 @@ DocumentX/
 ### ✅ v1.1.0 — Performance & Stability
 启动速度优化（并行初始化 + 非阻塞健康检查）、Android 后台稳定性（前台服务 + WakeLock + 心跳）、系统托盘、全局快捷键。
 
-### ✅ v1.2.0 — Throughput & UX（当前最新）
+### ✅ v1.2.0 — Throughput & UX
 并发传输队列（最多 3 个）、文本文件 gzip 压缩、指纹持久化设备命名、Android Material 3 触摸目标合规。
 
-### ✅ 传输加密（本次）
-接通 X25519 + AES-256-GCM 载荷加密，配对凭据改为 HMAC 证明而不上网，新增配对限流、服务端会话强制校验、自签名 HTTPS 门户，并修复了原先确定性 nonce 的缺陷。
+### ✅ v1.3.0 — Encrypted Transport（当前最新）
+接通 X25519 + AES-256-GCM 载荷加密，配对凭据改为 HMAC 证明而不上网，新增配对限流、服务端会话强制校验、自签名 HTTPS 门户，并修复了原先确定性 nonce 的缺陷。打包侧补齐了此前缺失的后端模块与发布签名配置。
 
 ### 🔜 Next
 - **断点续传** — 传输进度已持久化到 `temp_transfers/progress.json`，具备继续实现的基础

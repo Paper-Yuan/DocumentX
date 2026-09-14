@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+- Resumable file transfer with breakpoint continuation
+- Batch download (TAR.GZ) and QR share links with expiry
+- macOS and Linux desktop validation on real hardware
+
+---
+
+## [1.3.0] - 2026-09-15
+
 ### 🔐 Added — Encrypted transport
 
 - **Payload encryption is now on the transfer path.** Each chunk is sealed with
@@ -47,13 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receiver previously returned the PIN and token to any LAN caller, which made the pairing
   step decorative.
 
-### Planned
-- Resumable file transfer with breakpoint continuation
-- Batch download (TAR.GZ) and QR share links with expiry
-- macOS and Linux desktop validation on real hardware
-
 ### 🔧 Fixed — Packaging
-
 - **The installer no longer ships an incomplete backend.** It copied a hardcoded file list
   (`server.js` plus `public/`), so `crypto_protocol.js`, `lan_guard.js` and
   `tls_selfsigned.js` were absent and an installed build died on first launch with
