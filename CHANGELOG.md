@@ -74,7 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only falls back to the debug key when none is configured. Previously release APKs were
   always signed with the debug key, which is not distributable.
 - **Version numbers are consistent.** The Tauri bundle was pinned at 1.1.0, Android at
-  1.0.2, and `/api/v1/ping` reported 1.0.1; all now report 1.2.0.
+  1.0.2, and `/api/v1/ping` reported 1.0.1; all now report 1.3.0 from a single
+  `APP_VERSION` constant.
 - **Tauri CSP allows the UI to reach its own backend.** `connect-src` only permitted
   `http://localhost:8899`, which conflicted with the port the frontend is served from, and
   Google Fonts were not allowed at all.
