@@ -93,7 +93,7 @@ SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有�
 
 > ⚠️ 构建产物尚未上传到 Release（仓库 `main` 分支不含二进制文件，二进制已在 `.gitignore` 中排除）。当前 Release 页面只有说明、没有附件。
 
-现阶段推荐从源码构建，命令见 [快速开始](#-quick-start)。若需要直接分发包，欢迎在 [Issues](https://github.com/Paper-Yuan/DocumentX/issues) 里说明需求。
+现阶段推荐从源码构建，命令见 [快速开始](#-quick-start) 与 [打包](#-打包)。若需要直接分发包，欢迎在 [Issues](https://github.com/Paper-Yuan/DocumentX/issues) 里说明需求。
 
 **运行要求**
 
@@ -103,6 +103,48 @@ SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有�
 | Android | Android 8.0（API 26）及以上，需与桌面端处于同一局域网 |
 | Web 门户 | Chrome / Firefox / Safari / Edge 等现代浏览器 |
 | macOS / Linux | Tauri 代码本身跨平台，但**尚未实机验证**，不保证可用 |
+
+---
+
+## 📦 打包
+
+### Windows 单文件安装包
+
+```bash
+node computer-design/installer/build_installer.js
+```
+
+产物：`set/SafeDrop-Setup.exe`（约 34 MB，自带 Node 运行时，目标机无需预装环境）。
+
+构建流程为"发现模块 → 校验依赖 → 压缩载荷 → 编译安装器"，其中**依赖校验会让缺失模块的构建直接失败**——因为这类问题只会在用户安装后才暴露（表现为启动即 `MODULE_NOT_FOUND`）。打包细节见 [installer/README.md](./computer-design/installer/README.md)。
+
+### Android APK
+
+```bash
+cd android-design/com
+gradlew.bat assembleRelease     # 输出 app/build/outputs/apk/release/app-release.apk
+cd .. && node pack_apk.js       # 归档为 SafeDrop-release.apk
+```
+
+**发布签名**：release 构建会读取 `android-design/com/keystore.properties`（已在 `.gitignore` 中），或 `SAFEDROP_KEYSTORE_FILE` / `SAFEDROP_KEYSTORE_PASSWORD` / `SAFEDROP_KEY_ALIAS` / `SAFEDROP_KEY_PASSWORD` 环境变量：
+
+```properties
+storeFile=C:/path/to/release.jks
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+未配置时回退到 debug 签名，构建仍可成功，但**该 APK 不可用于分发**（会被应用商店与部分系统拒绝）。仓库不包含任何签名密钥。
+
+### Tauri 桌面外壳（MSI / NSIS）
+
+```bash
+cd computer-design/tauri-app
+npx tauri build
+```
+
+需要本机具备 Rust 工具链与 MSVC 构建环境；当前环境未安装，因此该产物未经验证。
 
 ---
 
@@ -133,6 +175,8 @@ node computer-design/desktop_hub/server.js
 | `Ctrl/Cmd + Shift + R` | 刷新设备列表 |
 
 快捷键注册失败不会阻断启动（例如与其它软件冲突时），日志会给出提示。
+
+> 从 Tauri 外壳启动时，前端由后端服务提供。Tauri 的 CSP 已放行 `connect-src http:` 与 Google Fonts，因此界面能正常访问本机后端；若你自行收紧 `csp`，注意 `/api/...` 请求必须被允许，否则界面会停在加载态。
 
 ### Android 端
 

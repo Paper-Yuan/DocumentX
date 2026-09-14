@@ -190,6 +190,22 @@
     }
   }
 
+  /**
+   * Backend origin for API calls.
+   *
+   * In a release Tauri build the window loads the bundled frontend from the `tauri://`
+   * scheme, so a relative `/api/...` URL would resolve against that scheme and never reach
+   * the Node backend. The desktop UI is always served by the backend itself when running in
+   * a browser, so the relative form stays correct there and this only rewrites the cases
+   * where the page is not an HTTP(S) document.
+   */
+  const BACKEND_ORIGIN = 'http://localhost:8899';
+
+  function apiUrl(pathname) {
+    const overHttp = location.protocol === 'http:' || location.protocol === 'https:';
+    return overHttp ? pathname : `${BACKEND_ORIGIN}${pathname}`;
+  }
+
   // Global state
   const state = {
     currentTab: 'radarTab',
@@ -434,7 +450,7 @@
   // 4. Fetch server system info
   async function fetchSystemInfo() {
     try {
-      const res = await fetch('/api/v1/info');
+      const res = await fetch(apiUrl('/api/v1/info'));
       const data = await res.json();
       state.info = data;
 
@@ -461,7 +477,7 @@
   // 4.1 Refresh dynamic pairing PIN
   async function refreshPin() {
     try {
-      const res = await fetch('/api/v1/pin/refresh', { method: 'POST' });
+      const res = await fetch(apiUrl('/api/v1/pin/refresh'), { method: 'POST' });
       const data = await res.json();
       if (state.info) {
         state.info.localIp = data.localIp || state.info.localIp;
@@ -484,7 +500,7 @@
   // 5. Mobile self-announcement
   async function announceMobileDevice() {
     try {
-      await fetch('/api/v1/devices/announce', {
+      await fetch(apiUrl('/api/v1/devices/announce'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -507,7 +523,7 @@
   // 6. Device topology discovery and smart merging
   async function fetchDevices() {
     try {
-      const res = await fetch('/api/v1/devices');
+      const res = await fetch(apiUrl('/api/v1/devices'));
       const data = await res.json();
       const rawDevices = data.devices || [];
 
@@ -921,7 +937,7 @@
           headers['x-encrypted'] = '1';
         }
 
-        const res = await fetch('/api/v1/transfer/upload', {
+        const res = await fetch(apiUrl('/api/v1/transfer/upload'), {
           method: 'POST',
           headers: headers,
           body: bodyToSend
@@ -1568,7 +1584,7 @@
     renderChatPeersList();
 
     try {
-      await fetch('/api/v1/message/send', {
+      await fetch(apiUrl('/api/v1/message/send'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1649,7 +1665,7 @@
 
   async function fetchMessages() {
     try {
-      const res = await fetch(`/api/v1/messages/list?since=${state.lastMessageTimestamp}`);
+      const res = await fetch(apiUrl(`/api/v1/messages/list?since=${state.lastMessageTimestamp}`));
       const data = await res.json();
       const messages = data.messages || [];
       if (messages.length === 0) return;
@@ -1733,7 +1749,7 @@
   // 10. File vault listing and download
   async function fetchFiles() {
     try {
-      const res = await fetch('/api/v1/files/list');
+      const res = await fetch(apiUrl('/api/v1/files/list'));
       const data = await res.json();
       if (data.downloadDir) {
         if (dom.sandboxDirText) dom.sandboxDirText.textContent = `落盘沙箱路径: ${data.downloadDir}`;
@@ -1757,6 +1773,7 @@
     }
 
     dom.filesList.innerHTML = files.map(f => {
+      const downloadHref = apiUrl(`/api/v1/files/download/${encodeURIComponent(f.name)}`);
       return `
         <div class="file-item">
           <div class="file-head">
@@ -1767,7 +1784,7 @@
               </svg>
               <span>${escapeHtml(f.name)}</span>
             </span>
-            <a href="/api/v1/files/download/${encodeURIComponent(f.name)}" download class="btn btn-secondary btn-sm">
+            <a href="${downloadHref}" download class="btn btn-secondary btn-sm">
               下载
             </a>
           </div>
@@ -1983,7 +2000,7 @@
           return;
         }
         try {
-          const res = await fetch('/api/v1/settings/dir', {
+          const res = await fetch(apiUrl('/api/v1/settings/dir'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ dir: newDir })
@@ -2040,7 +2057,7 @@
 
   async function openStorageDir() {
     try {
-      await fetch('/api/v1/settings/open-dir', { method: 'POST' });
+      await fetch(apiUrl('/api/v1/settings/open-dir'), { method: 'POST' });
       showToast('已在系统文件资源管理器中打开沙箱目录');
     } catch (e) {
       showToast('打开目录失败');
@@ -2054,8 +2071,8 @@
 
     try {
       const [namesRes, devicesRes] = await Promise.all([
-        fetch('/api/v1/devices/names'),
-        fetch('/api/v1/devices')
+        fetch(apiUrl('/api/v1/devices/names')),
+        fetch(apiUrl('/api/v1/devices'))
       ]);
       
       const namesData = await namesRes.json();
@@ -2123,7 +2140,7 @@
           const customName = input?.value.trim();
           if (!customName) return showToast('请输入自定义名称');
           try {
-            const res = await fetch(`/api/v1/devices/names/${fingerprint}`, {
+            const res = await fetch(apiUrl(`/api/v1/devices/names/${fingerprint}`), {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ customName })
@@ -2145,7 +2162,7 @@
           const fingerprint = e.target.dataset.fingerprint;
           if (!confirm('确定要删除此设备的自定义名称吗？')) return;
           try {
-            const res = await fetch(`/api/v1/devices/names/${fingerprint}`, { method: 'DELETE' });
+            const res = await fetch(apiUrl(`/api/v1/devices/names/${fingerprint}`), { method: 'DELETE' });
             if (res.ok) {
               showToast('设备名称已删除');
               loadDeviceNamesManager();

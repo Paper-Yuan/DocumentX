@@ -54,6 +54,17 @@ package-lock.json
 computer-design/desktop_hub/tls/
 computer-design/desktop_hub/temp_transfers/
 
+# Android release signing material — must never be committed
+android-design/com/keystore.properties
+*.jks
+*.keystore
+
+# Installer build intermediates
+computer-design/installer/build_staging/
+computer-design/installer/payload.zip
+computer-design/installer/SafeDrop.exe
+computer-design/installer/uninstall.exe
+
 # OS and Editor specific
 .DS_Store
 Thumbs.db

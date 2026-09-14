@@ -22,6 +22,9 @@ const lanGuard = require('./lan_guard');
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8899;
 const UDP_PORT = 8890;
+// Single source of truth for the reported version, kept in step with tauri-app/package.json
+// and the Android versionName so the three platforms cannot drift apart.
+const APP_VERSION = '1.2.0';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const CONFIG_FILE = process.env.SAFEDROP_CONFIG
   ? path.resolve(process.env.SAFEDROP_CONFIG)
@@ -113,8 +116,17 @@ try {
   }
 } catch (_) {}
 
+// A configured vault path can be stale (moved, on a removed drive, or carried over from
+// another machine). Creating it must not abort startup: fall back to the default location.
 if (!fs.existsSync(DOWNLOAD_DIR)) {
-  fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+  try {
+    fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+  } catch (err) {
+    const fallback = path.join(os.homedir(), 'Downloads', 'SafeDrop');
+    console.warn(`[SafeDrop] Cannot use vault directory "${DOWNLOAD_DIR}" (${err.message}); falling back to ${fallback}`);
+    DOWNLOAD_DIR = fallback;
+    fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+  }
 }
 
 // Save device custom names to config file
@@ -548,7 +560,7 @@ function handleApi(pathname, req, res, urlObj) {
       os: 'windows',
       fingerprint: hostFingerprint,
       port: PORT,
-      version: '1.0.1',
+      version: APP_VERSION,
       timestamp: Date.now()
     });
     return;

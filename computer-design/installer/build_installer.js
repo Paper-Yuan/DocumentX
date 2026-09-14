@@ -2,11 +2,18 @@
  * SafeDrop Self-Extracting Installer Packager
  * Packages SafeDrop Desktop Hub into a single standalone SafeDrop-Setup.exe
  * with standard Windows software installation wizard logic.
+ *
+ * The backend is bundled by copying every JavaScript module in desktop_hub rather than a
+ * fixed list, and the staged copy is then checked for unresolved require() targets. Listing
+ * files by hand previously meant a newly added module (crypto_protocol.js, lan_guard.js,
+ * tls_selfsigned.js) was silently absent from the installer, producing a build that crashed
+ * on first launch with MODULE_NOT_FOUND.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const payloadCheck = require('./payload_check');
 
 console.log('========================================================');
 console.log('📦 SafeDrop 电脑端自解压安装包构建 (SafeDrop-Setup.exe)');
@@ -67,12 +74,18 @@ try {
   fs.copyFileSync(launcherOut, path.join(TEMP_DIR, 'SafeDrop.exe'));
   fs.copyFileSync(uninstallerOut, path.join(TEMP_DIR, 'uninstall.exe'));
   fs.copyFileSync(path.join(ROOT_DIR, 'app.ico'), path.join(TEMP_DIR, 'app.ico'));
-  fs.copyFileSync(path.join(HUB_DIR, 'server.js'), path.join(TEMP_DIR, 'server.js'));
-  if (fs.existsSync(path.join(HUB_DIR, 'config.json'))) {
-    fs.copyFileSync(path.join(HUB_DIR, 'config.json'), path.join(TEMP_DIR, 'config.json'));
-  } else {
-    fs.writeFileSync(path.join(TEMP_DIR, 'config.json'), '{}');
+
+  // Every backend module, discovered rather than listed, so a new one cannot be forgotten.
+  const backendModules = payloadCheck.backendModulesOf(HUB_DIR);
+  for (const moduleName of backendModules) {
+    fs.copyFileSync(path.join(HUB_DIR, moduleName), path.join(TEMP_DIR, moduleName));
   }
+  console.log(`  -> 已打包后端模块 (${backendModules.length}): ${backendModules.join(', ')}`);
+
+  // Ship an empty config. The repository copy records the maintainer's own Downloads path,
+  // which must never land on someone else's machine; the server falls back to
+  // <user>/Downloads/SafeDrop when no downloadDir is configured.
+  fs.writeFileSync(path.join(TEMP_DIR, 'config.json'), '{}\n', 'utf8');
 
   // Copy public assets
   copyDirRecursive(path.join(HUB_DIR, 'public'), path.join(TEMP_DIR, 'public'));
@@ -82,7 +95,19 @@ try {
   if (fs.existsSync(nodeSource)) {
     console.log('  -> 正在捆绑便携式运行时 node.exe...');
     fs.copyFileSync(nodeSource, path.join(TEMP_DIR, 'node.exe'));
+  } else {
+    throw new Error('未找到 node.exe（C:\\Program Files\\nodejs\\node.exe），无法生成自带运行时的安装包');
   }
+
+  // Step 3.5: Refuse to package a payload that cannot boot.
+  console.log('\n[3.5/6] 正在校验载荷完整性（依赖解析）...');
+  const verification = payloadCheck.verifyStagedPayload(TEMP_DIR);
+  if (verification.missing.length > 0) {
+    throw new Error(
+      `载荷缺少被依赖的模块，安装后将无法启动:\n  - ${verification.missing.join('\n  - ')}`
+    );
+  }
+  console.log(`  -> 依赖校验通过（${verification.jsFiles.length} 个模块，无缺失引用）`);
 
   // Step 4: Compress into payload.zip
   console.log('\n[4/6] 正在将分发程序包压缩为自解压载荷 (payload.zip)...');

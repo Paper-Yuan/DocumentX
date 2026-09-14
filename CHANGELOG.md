@@ -52,6 +52,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Batch download (TAR.GZ) and QR share links with expiry
 - macOS and Linux desktop validation on real hardware
 
+### 🔧 Fixed — Packaging
+
+- **The installer no longer ships an incomplete backend.** It copied a hardcoded file list
+  (`server.js` plus `public/`), so `crypto_protocol.js`, `lan_guard.js` and
+  `tls_selfsigned.js` were absent and an installed build died on first launch with
+  `MODULE_NOT_FOUND`. Modules are now discovered from the directory, and the staged payload
+  is dependency-checked before packaging, so a missing module fails the build instead of the
+  user's install.
+- **The installer no longer carries the maintainer's paths.** It shipped
+  `desktop_hub/config.json`, which pointed the vault at the build machine's
+  `C:\Users\...\Downloads\SafeDrop`. The payload now contains an empty config, and the server
+  falls back to the current user's `Downloads/SafeDrop`.
+- **A stale configured vault path can no longer abort startup.** `mkdirSync` on a
+  missing/unavailable directory is now caught and falls back to the default location.
+- **Android release builds support real signing.** `signingConfigs.release` loads a keystore
+  from `keystore.properties` (gitignored) or `SAFEDROP_KEYSTORE_*` environment variables, and
+  only falls back to the debug key when none is configured. Previously release APKs were
+  always signed with the debug key, which is not distributable.
+- **Version numbers are consistent.** The Tauri bundle was pinned at 1.1.0, Android at
+  1.0.2, and `/api/v1/ping` reported 1.0.1; all now report 1.2.0.
+- **Tauri CSP allows the UI to reach its own backend.** `connect-src` only permitted
+  `http://localhost:8899`, which conflicted with the port the frontend is served from, and
+  Google Fonts were not allowed at all.
+
 ---
 
 ## [1.2.0] - 2026-09-14
