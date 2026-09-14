@@ -104,18 +104,21 @@ DocumentX/
 
 **位置**: 仓库首页顶部，点击 ⚙️ 图标
 
-**推荐描述** (英文):
+**描述** (英文，已应用):
 ```
-🚀 Zero-config cross-platform secure file transfer with E2E encryption | 
-X25519 + AES-256-GCM | Windows/Android/Web | 
-60fps Radar UI | 95%+ success rate
+Send files between a PC, phone, and any browser on your local network. The desktop
+app is the hub: pair with one QR scan plus a rotating PIN, then transfers run
+directly over LAN, no cloud account. UDP beacon discovery, chunked streaming with a
+queue, zero-dependency Node backend in a Tauri shell.
 ```
 
-**推荐描述** (中文):
+**描述** (中文，备用):
 ```
-🚀 零配置跨平台安全互传系统 | 端到端加密 (X25519+AES-256-GCM) | 
-Windows/Android/Web | 毫秒级设备发现 | 95%+ 传输成功率
+局域网文件互传工具，以桌面端为 hub：扫码配对后设备间直连传输，不经过云端。
+零配置 UDP 发现、分块流式传输与传输队列，后端仅用 Node 标准库，外壳为 Tauri。
 ```
+
+> **注**：不再使用 "端到端加密 / E2E encryption / AES-256-GCM" 作为对外描述。加密模块虽已实现并有单元测试，但尚未接入实际传输链路，详见 README 的「What it does and does not protect」。
 
 **Website**: 留空或填写项目主页（如有）
 
@@ -123,10 +126,12 @@ Windows/Android/Web | 毫秒级设备发现 | 95%+ 传输成功率
 
 #### 2.2 添加 Topics (标签)
 
-**推荐 Topics**:
+**Topics**（已应用）:
 ```
 file-transfer
-encryption
+lan-transfer
+lan-file-transfer
+local-network
 cross-platform
 windows
 android
@@ -135,12 +140,12 @@ nodejs
 kotlin
 zero-configuration
 peer-to-peer
-e2e-encryption
-lan-transfer
-aes-256-gcm
-x25519
-secure-transfer
+qr-code
+scoped-storage
+web-portal
 ```
+
+> **注**：已移除 `encryption` / `e2e-encryption` / `aes-256-gcm` / `x25519` / `secure-transfer` 等标签。标签代表使用者对项目的预期，而传输内容当前未加密，保留这些标签会误导检索者。
 
 **添加方法**:
 1. 仓库首页右侧，点击 **About** 旁的 ⚙️
@@ -357,12 +362,15 @@ SafeDrop v1.1.0 - Performance & Stability Upgrade 🚀
 ### 仓库首页将显示:
 
 ```
-🚀 Zero-config cross-platform secure file transfer with E2E encryption | 
-X25519 + AES-256-GCM | Windows/Android/Web | 60fps Radar UI | 95%+ success rate
+Send files between a PC, phone, and any browser on your local network. The desktop
+app is the hub: pair with one QR scan plus a rotating PIN, then transfers run
+directly over LAN, no cloud account. UDP beacon discovery, chunked streaming with a
+queue, zero-dependency Node backend in a Tauri shell.
 
 ⭐️ Stars: 0    🍴 Forks: 0    📝 MIT License
 
-Topics: file-transfer encryption cross-platform windows android tauri...
+Topics: file-transfer lan-transfer local-network cross-platform windows android
+        tauri nodejs kotlin qr-code peer-to-peer zero-configuration web-portal
 ```
 
 ### Issues 页面:

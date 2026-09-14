@@ -7,11 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned for v1.2.0
+### Planned
+- Wire the existing X25519 + AES-256-GCM module into the transfer path (payload encryption)
 - Resumable file transfer with breakpoint continuation
-- Web portal enhancements: drag-and-drop upload, batch download, QR sharing
-- Transfer queue management
-- macOS and Linux desktop support
+- Batch download (TAR.GZ) and QR share links with expiry
+- macOS and Linux desktop validation on real hardware
+
+---
+
+## [1.2.0] - 2026-09-14
+
+### ✨ Features
+
+- **Transfer queue with concurrency**: up to 3 files transfer simultaneously, remaining
+  tasks queue automatically; queue position is surfaced in the UI and a failure in one
+  task does not affect the others
+- **Fingerprint-based persistent device naming**: device identity derives from a SHA-256
+  fingerprint of the public key, so custom names survive IP changes and reconnections
+- **Optional gzip compression**: automatically applied to common compressible file types
+  of 1 MB or larger, compressed client-side and decompressed server-side; toggleable in settings
+- **Corporate Trust visual system**: Indigo/Violet theme with revised hierarchy
+
+### ⚡ Performance
+
+- **Desktop chunk size raised from 1 MB to 4 MB**, reducing per-chunk protocol overhead
+  for large files (the Android client continues to use 1 MB chunks)
+- Improved chunk processing and buffering
+
+### 📱 Android
+
+- Material 3 touch-target compliance (all interactive elements ≥ 48dp)
+- Layout and theme adaptation improvements, better handling of rotation and varied screen sizes
+
+### 📚 Documentation
+
+- v1.2.0 optimization report and mobile optimization documentation added
 
 ---
 
