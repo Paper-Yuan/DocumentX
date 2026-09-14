@@ -6,6 +6,7 @@
 
 本目录作为《基于混合加密与零配置协议的跨平台安全快传系统》的移动便携端（Mobile Client）基础环境与核心工程仓库。移动端主要承担便携设备随行文件互传、利用摄像头毫秒级扫码建立带外信任锚点、系统级一键分享投送以及移动后台防杀保活传输。
 
+
 ### 核心交付物概览：
 1. **独立安装包**：[`SafeDrop-release.apk`](file:///e:/Workbox/DocumentX/android-design/SafeDrop-release.apk)（开箱即用，体积 17.8MB < 20MB，支持 Android 8.0 ~ Android 14+）。已彻底修复“解析软件包出现问题”的缺陷：采用合规的 Android 二进制 AXML (`0x00080003`) 清单结构、标准 Dalvik 字节码及官方 APK Signature Scheme 签名校验，可直接在各大品牌真机上一键顺利安装。
 2. **一键构建脚本**：[`build_apk.bat`](file:///e:/Workbox/DocumentX/android-design/build_apk.bat)（支持系统 JDK Gradle 构建与 Node.js 绿色打包双通道）。

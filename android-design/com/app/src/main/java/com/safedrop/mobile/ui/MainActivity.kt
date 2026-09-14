@@ -7,8 +7,11 @@ import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -76,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     private var targetFingerprint = ""
     private var isHubConnected = false
     private var currentThemeMode = "dark"
+    private var hasBatteryOptimizationPrompted = false
 
     // Adapters for the 4 pages
     private lateinit var deviceAdapter: DeviceAdapter
@@ -142,6 +146,7 @@ class MainActivity : AppCompatActivity() {
 
         prefs = getSharedPreferences("safedrop_prefs", MODE_PRIVATE)
         currentThemeMode = prefs.getString("theme_mode", "dark") ?: "dark"
+        hasBatteryOptimizationPrompted = prefs.getBoolean("battery_optimization_prompted", false)
 
         // Initialize target connection host from preferences or LAN gateway
         val savedHost = prefs.getString("connected_host", null)
@@ -1508,6 +1513,9 @@ class MainActivity : AppCompatActivity() {
         // Automatically switch to Transfer & Chat page to show progress
         binding.bottomNavigation.selectedItemId = R.id.nav_transfer
 
+        // Ensure battery optimization exemption for stable transfers
+        ensureBatteryOptimizationForTransfer()
+
         // Start foreground service
         TransferForegroundService.startTransfer(this, fileName)
         val taskId = "task_${System.currentTimeMillis()}"
@@ -1627,5 +1635,61 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return size
+    }
+
+    /**
+     * Request battery optimization exemption to ensure stable background transfers
+     * This is crucial for OPPO/VIVO/Xiaomi devices with aggressive battery management
+     */
+    private fun requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        val packageName = packageName
+
+        if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
+            return
+        }
+
+        if (hasBatteryOptimizationPrompted) {
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("提升传输稳定性")
+            .setMessage("为确保大文件传输稳定完成（特别是 OPPO/VIVO/小米设备），建议允许 SafeDrop 在后台运行。\n\n这将防止系统在传输过程中强制关闭应用。")
+            .setPositiveButton("前往设置") { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                    prefs.edit().putBoolean("battery_optimization_prompted", true).apply()
+                    hasBatteryOptimizationPrompted = true
+                } catch (e: Exception) {
+                    Toast.makeText(this, "请在系统设置中手动允许 SafeDrop 后台运行", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("稍后提醒") { _, _ ->
+                // Do not mark as prompted, will ask again next time
+            }
+            .setNeutralButton("不再提示") { _, _ ->
+                prefs.edit().putBoolean("battery_optimization_prompted", true).apply()
+                hasBatteryOptimizationPrompted = true
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    /**
+     * Check if battery optimization exemption is needed before starting transfer
+     */
+    private fun ensureBatteryOptimizationForTransfer() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        if (!powerManager.isIgnoringBatteryOptimizations(packageName) && !hasBatteryOptimizationPrompted) {
+            requestBatteryOptimizationExemption()
+        }
     }
 }

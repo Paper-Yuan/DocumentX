@@ -125,12 +125,23 @@ class CryptoEngine {
         encryptedChunk: ByteArray,
         sessionKey: SecretKey
     ): ByteArray {
-        require(encryptedChunk.size >= IV_SIZE + TAG_SIZE_BYTES) {
-            "Ciphertext too short to contain Nonce and AuthTag"
+        // Enhanced boundary validation with detailed error messages
+        require(encryptedChunk.isNotEmpty()) {
+            "Encrypted chunk cannot be empty"
+        }
+        
+        val minSize = IV_SIZE + TAG_SIZE_BYTES
+        require(encryptedChunk.size >= minSize) {
+            "Ciphertext too short: expected at least $minSize bytes (${IV_SIZE}B nonce + ${TAG_SIZE_BYTES}B tag), got ${encryptedChunk.size} bytes"
         }
 
         val nonce = encryptedChunk.copyOfRange(0, IV_SIZE)
         val ciphertextWithTag = encryptedChunk.copyOfRange(IV_SIZE, encryptedChunk.size)
+        
+        // Additional defense: verify ciphertext segment has minimum viable length
+        require(ciphertextWithTag.size >= TAG_SIZE_BYTES) {
+            "Ciphertext segment too short to contain authentication tag (got ${ciphertextWithTag.size} bytes)"
+        }
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val spec = GCMParameterSpec(TAG_SIZE_BITS, nonce)

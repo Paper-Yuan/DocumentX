@@ -1,0 +1,14 @@
+E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\deps\thiserror-0a90d3c1a267a376.d: C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\lib.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\aserror.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\display.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\var.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\private.rs E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\build\thiserror-2669cbeaa8476858\out/private.rs
+
+E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\deps\libthiserror-0a90d3c1a267a376.rlib: C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\lib.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\aserror.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\display.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\var.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\private.rs E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\build\thiserror-2669cbeaa8476858\out/private.rs
+
+E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\deps\libthiserror-0a90d3c1a267a376.rmeta: C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\lib.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\aserror.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\display.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\var.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\private.rs E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\build\thiserror-2669cbeaa8476858\out/private.rs
+
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\lib.rs:
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\aserror.rs:
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\display.rs:
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\var.rs:
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.20\src\private.rs:
+E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\build\thiserror-2669cbeaa8476858\out/private.rs:
+
+# env-dep:OUT_DIR=E:\\Workbox\\DocumentX\\computer-design\\tauri-app\\src-tauri\\target\\release\\build\\thiserror-2669cbeaa8476858\\out

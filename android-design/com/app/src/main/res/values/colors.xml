@@ -1,44 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Brand & Accent Colors -->
-    <color name="primary">#4F46E5</color>
-    <color name="primary_variant">#4338CA</color>
+    <!-- Enhanced Brand & Accent Colors - Aligned with desktop -->
+    <color name="primary">#3B82F6</color>
+    <color name="primary_variant">#2563EB</color>
+    <color name="primary_light">#60A5FA</color>
     <color name="on_primary">#FFFFFF</color>
     <color name="secondary">#06B6D4</color>
+    <color name="secondary_light">#22D3EE</color>
     <color name="on_secondary">#FFFFFF</color>
     <color name="success">#10B981</color>
+    <color name="success_light">#34D399</color>
     <color name="warning">#F59E0B</color>
+    <color name="warning_light">#FBBF24</color>
     <color name="error">#EF4444</color>
+    <color name="error_light">#F87171</color>
 
-    <!-- Dark Mode Theme Surfaces -->
-    <color name="background_dark">#0B0F19</color>
-    <color name="surface_dark">#111827</color>
-    <color name="surface_variant_dark">#1F2937</color>
-    <color name="card_bg_dark">#1E293B</color>
-    <color name="border_dark">#334155</color>
-    <color name="text_primary_dark">#F8FAFC</color>
-    <color name="text_secondary_dark">#94A3B8</color>
+    <!-- Dark Mode Theme Surfaces - Enhanced depth and hierarchy -->
+    <color name="background_dark">#0A0A0D</color>
+    <color name="surface_dark">#14141A</color>
+    <color name="surface_variant_dark">#1A1A24</color>
+    <color name="surface_elevated_dark">#1E1E2A</color>
+    <color name="card_bg_dark">#1A1A24</color>
+    <color name="border_dark">#2A2A38</color>
+    <color name="border_hover_dark">#363648</color>
+    <color name="text_primary_dark">#FAFAFA</color>
+    <color name="text_secondary_dark">#B4B4C5</color>
+    <color name="text_muted_dark">#7C7C92</color>
 
-    <!-- Eye-Care Theme Palette (Warm Cream + Emerald Green) -->
-    <color name="eyecare_background">#F6F4ED</color>
-    <color name="eyecare_surface">#EFECE4</color>
-    <color name="eyecare_card">#FFFFFF</color>
+    <!-- Eye-Care Theme Palette - Enhanced warmth and comfort -->
+    <color name="eyecare_background">#EBE2CC</color>
+    <color name="eyecare_surface">#DDD4BA</color>
+    <color name="eyecare_surface_variant">#E8DFCB</color>
+    <color name="eyecare_card">#F7F0E4</color>
     <color name="eyecare_primary">#2E7D56</color>
     <color name="eyecare_primary_variant">#246545</color>
+    <color name="eyecare_primary_light">#3A9968</color>
     <color name="eyecare_accent">#52B788</color>
-    <color name="eyecare_border">#D8D3C5</color>
-    <color name="eyecare_text_primary">#1D2D24</color>
-    <color name="eyecare_text_secondary">#5C6D62</color>
+    <color name="eyecare_border">#C4BBA2</color>
+    <color name="eyecare_text_primary">#1A1612</color>
+    <color name="eyecare_text_secondary">#3D3830</color>
+    <color name="eyecare_text_muted">#5F5850</color>
 
-    <!-- Light Mode Theme Surfaces -->
-    <color name="background_light">#F8FAFC</color>
+    <!-- Light Mode Theme Surfaces - Enhanced clarity and airiness -->
+    <color name="background_light">#F4F6FA</color>
     <color name="surface_light">#FFFFFF</color>
-    <color name="border_light">#E2E8F0</color>
+    <color name="surface_variant_light">#FAFBFC</color>
+    <color name="surface_elevated_light">#FFFFFF</color>
+    <color name="card_bg_light">#FFFFFF</color>
+    <color name="border_light">#D8DEE9</color>
+    <color name="border_hover_light">#B8C1D3</color>
     <color name="text_primary_light">#0F172A</color>
-    <color name="text_secondary_light">#64748B</color>
+    <color name="text_secondary_light">#3E4A5D</color>
+    <color name="text_muted_light">#6B7788</color>
 
-    <!-- Radar Canvas Colors -->
-    <color name="radar_center">#6366F1</color>
+    <!-- Radar Canvas Colors - Enhanced vibrancy -->
+    <color name="radar_center">#3B82F6</color>
     <color name="radar_wave">#38BDF8</color>
     <color name="radar_device_node">#10B981</color>
+    <color name="radar_scan_beam">#60A5FA</color>
+    
+    <!-- Status & Semantic Colors -->
+    <color name="online_status">#10B981</color>
+    <color name="offline_status">#6B7280</color>
+    <color name="transferring_status">#3B82F6</color>
+    <color name="completed_status">#10B981</color>
+    <color name="failed_status">#EF4444</color>
 </resources>

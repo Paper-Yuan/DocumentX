@@ -17,6 +17,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8899;
 const UDP_PORT = 8890;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const CONFIG_FILE = path.join(__dirname, 'config.json');
+const TEMP_DIR = path.join(__dirname, 'temp_transfers');
+const PROGRESS_FILE = path.join(TEMP_DIR, 'progress.json');
 
 // Discover all valid local IPv4 LAN addresses, filtering virtual / TUN adapters
 function getAllLocalIps() {
@@ -181,14 +183,21 @@ function upsertOrMergeDevice(data) {
   let matchedKey = null;
   let matchedDev = null;
 
-  // Search existing active devices: Key strictly by distinct ID or distinct IP
+  // Search existing active devices: Key strictly by distinct ID, IP, or fingerprint
   for (const [key, existing] of onlineDevices.entries()) {
     if (existing.isHost) continue;
 
     const sameId = (data.id && existing.id && data.id === existing.id);
     const sameIp = (ip && existing.ip && ip === existing.ip);
+    // Add fingerprint matching to prevent duplicate entries from same physical device
+    const sameFingerprint = (
+      data.fingerprint && 
+      existing.fingerprint && 
+      data.fingerprint === existing.fingerprint &&
+      !['LAN-BEACON', 'HTTP-CLIENT', 'LAN-NODE', 'VERIFIED'].includes(data.fingerprint.toUpperCase())
+    );
 
-    if (sameId || sameIp) {
+    if (sameId || sameIp || sameFingerprint) {
       matchedKey = key;
       matchedDev = existing;
       break;
@@ -235,6 +244,52 @@ function upsertOrMergeDevice(data) {
 const transferHistory = [];
 // Chat & instant transfer timeline messages store
 const chatMessages = [];
+
+// Transfer progress storage (memory + persistence)
+const transferProgress = new Map();
+
+// Ensure temporary directory exists
+if (!fs.existsSync(TEMP_DIR)) {
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+}
+
+// Load persisted progress on startup
+function loadPersistedProgress() {
+  try {
+    if (fs.existsSync(PROGRESS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(PROGRESS_FILE, 'utf8'));
+      Object.entries(data).forEach(([id, progress]) => {
+        transferProgress.set(id, progress);
+      });
+      console.log(`[SafeDrop] Loaded ${transferProgress.size} incomplete transfer progress records`);
+    }
+  } catch (error) {
+    console.error('[Progress] Load failed:', error);
+  }
+}
+
+// Persist progress to disk
+function persistProgress() {
+  try {
+    const data = Object.fromEntries(transferProgress);
+    fs.writeFileSync(PROGRESS_FILE, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('[Progress] Persist failed:', error);
+  }
+}
+
+// Find missing chunks
+function findMissingChunks(uploadedChunks, totalChunks) {
+  const missing = [];
+  for (let i = 0; i < totalChunks; i++) {
+    if (!uploadedChunks.includes(i)) {
+      missing.push(i);
+    }
+  }
+  return missing;
+}
+
+loadPersistedProgress();
 
 // MIME types dictionary
 const MIME_TYPES = {
@@ -332,6 +387,15 @@ function handleApi(pathname, req, res, urlObj) {
       port: PORT,
       version: '1.0.1',
       timestamp: Date.now()
+    });
+    return;
+  }
+
+  // 2.1 Lightweight health check endpoint for fast startup
+  if (pathname === '/health' && req.method === 'GET') {
+    jsonResponse(res, 200, {
+      status: 'ok',
+      ready: true
     });
     return;
   }
@@ -493,13 +557,29 @@ function handleApi(pathname, req, res, urlObj) {
     const rawTaskId = req.headers['x-task-id'] || `task_${Date.now()}`;
     const taskId = rawTaskId.replace(/[^a-zA-Z0-9_\-]/g, '') || `task_${Date.now()}`;
     let rawFileName = 'received_file.bin';
-    try {
-      rawFileName = decodeURIComponent(req.headers['x-file-name'] || 'received_file.bin');
-    } catch (_) {
+    const headerFileName = req.headers['x-file-name'];
+    
+    if (headerFileName) {
       try {
-        rawFileName = Buffer.from(req.headers['x-file-name'] || 'received_file.bin', 'latin1').toString('utf8');
-      } catch (__) {
-        rawFileName = req.headers['x-file-name'] || 'received_file.bin';
+        // First attempt: standard URL decode
+        rawFileName = decodeURIComponent(headerFileName);
+      } catch (_) {
+        try {
+          // Second attempt: Latin1 to UTF-8 conversion for raw bytes
+          rawFileName = Buffer.from(headerFileName, 'latin1').toString('utf8');
+        } catch (__) {
+          try {
+            // Third attempt: decode percent-encoded manually for malformed sequences
+            rawFileName = headerFileName.replace(/%([0-9A-F]{2})/gi, (match, hex) => {
+              return String.fromCharCode(parseInt(hex, 16));
+            });
+            // Attempt UTF-8 interpretation
+            rawFileName = Buffer.from(rawFileName, 'binary').toString('utf8');
+          } catch (___) {
+            // Final fallback: use raw header value with basic sanitization
+            rawFileName = headerFileName.replace(/[^\x20-\x7E\u4E00-\u9FFF]/g, '_');
+          }
+        }
       }
     }
     const safeName = sanitizeFileName(rawFileName);

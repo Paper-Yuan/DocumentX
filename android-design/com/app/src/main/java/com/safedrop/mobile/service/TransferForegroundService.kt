@@ -6,12 +6,19 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import androidx.core.app.NotificationCompat
 import com.safedrop.mobile.R
 import com.safedrop.mobile.SafeDropApp
 import com.safedrop.mobile.ui.MainActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 
 /**
  * Mobile Foreground Transfer Service
@@ -66,6 +73,12 @@ class TransferForegroundService : Service() {
     }
 
     private var currentFileName = "file"
+    private var wakeLock: PowerManager.WakeLock? = null
+    private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
+    private var heartbeatJob: Job? = null
+    private var lastProgressUpdateTime = 0L
+    private val HEARTBEAT_INTERVAL_MS = 30000L // 30 seconds
+    private val WAKELOCK_TIMEOUT_MS = 10 * 60 * 1000L // 10 minutes
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -75,6 +88,14 @@ class TransferForegroundService : Service() {
                 currentFileName = intent.getStringExtra(EXTRA_FILE_NAME) ?: "transferring"
                 val notification = buildNotification(currentFileName, 0, 0f)
                 startForeground(NOTIFICATION_ID, notification)
+                
+                // Acquire WakeLock to prevent CPU sleep during transfer
+                acquireWakeLock()
+                
+                // Start heartbeat mechanism to keep service alive
+                startHeartbeat()
+                
+                lastProgressUpdateTime = System.currentTimeMillis()
             }
             ACTION_UPDATE_PROGRESS -> {
                 val progress = intent.getIntExtra(EXTRA_PROGRESS, 0)
@@ -83,6 +104,8 @@ class TransferForegroundService : Service() {
                 val notification = buildNotification(name, progress, speed)
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
                 manager.notify(NOTIFICATION_ID, notification)
+                
+                lastProgressUpdateTime = System.currentTimeMillis()
             }
             ACTION_FINISH_TRANSFER -> {
                 triggerHapticFeedback()
@@ -94,10 +117,19 @@ class TransferForegroundService : Service() {
                     .setAutoCancel(true)
                     .build()
                 manager.notify(NOTIFICATION_ID + 1, completeNotification)
+                
+                // Release resources
+                releaseWakeLock()
+                stopHeartbeat()
+                
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
             ACTION_CANCEL_TRANSFER -> {
+                // Release resources on cancel
+                releaseWakeLock()
+                stopHeartbeat()
+                
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -142,5 +174,86 @@ class TransferForegroundService : Service() {
                 vibrator.vibrate(120)
             }
         } catch (_: Exception) {}
+    }
+
+    /**
+     * Acquire WakeLock to prevent CPU sleep during transfer
+     * Critical for stable background transfers on aggressive battery management devices
+     */
+    private fun acquireWakeLock() {
+        try {
+            if (wakeLock == null) {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = powerManager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "SafeDrop::TransferWakeLock"
+                ).apply {
+                    // Set timeout as a safety measure
+                    acquire(WAKELOCK_TIMEOUT_MS)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TransferService", "Failed to acquire WakeLock: ${e.message}")
+        }
+    }
+
+    /**
+     * Release WakeLock when transfer completes or is cancelled
+     */
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+            wakeLock = null
+        } catch (e: Exception) {
+            android.util.Log.e("TransferService", "Failed to release WakeLock: ${e.message}")
+        }
+    }
+
+    /**
+     * Start heartbeat mechanism to keep service alive and update notification
+     * Prevents system from killing the service on OPPO/VIVO/Xiaomi devices
+     */
+    private fun startHeartbeat() {
+        stopHeartbeat() // Ensure no duplicate jobs
+        
+        heartbeatJob = serviceScope.launch {
+            while (true) {
+                delay(HEARTBEAT_INTERVAL_MS)
+                
+                try {
+                    // Update notification to show service is still alive
+                    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                    val notification = buildNotification(currentFileName, -1, 0f)
+                    manager.notify(NOTIFICATION_ID, notification)
+                    
+                    // Check if transfer appears stalled (no progress updates for 2 minutes)
+                    val timeSinceLastUpdate = System.currentTimeMillis() - lastProgressUpdateTime
+                    if (timeSinceLastUpdate > 120000) {
+                        android.util.Log.w("TransferService", "Transfer may be stalled, no progress for ${timeSinceLastUpdate / 1000}s")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("TransferService", "Heartbeat error: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Stop heartbeat when transfer completes or is cancelled
+     */
+    private fun stopHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        releaseWakeLock()
+        stopHeartbeat()
+        serviceScope.cancel()
     }
 }

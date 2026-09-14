@@ -1,0 +1,14 @@
+E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\deps\serde-283051ce5258d164.d: C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\build\serde-421d154bee76f093\out/private.rs
+
+E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\deps\libserde-283051ce5258d164.rlib: C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\build\serde-421d154bee76f093\out/private.rs
+
+E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\deps\libserde-283051ce5258d164.rmeta: C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\build\serde-421d154bee76f093\out/private.rs
+
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs:
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs:
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs:
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs:
+C:\Users\J1825\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs:
+E:\Workbox\DocumentX\computer-design\tauri-app\src-tauri\target\release\build\serde-421d154bee76f093\out/private.rs:
+
+# env-dep:OUT_DIR=E:\\Workbox\\DocumentX\\computer-design\\tauri-app\\src-tauri\\target\\release\\build\\serde-421d154bee76f093\\out

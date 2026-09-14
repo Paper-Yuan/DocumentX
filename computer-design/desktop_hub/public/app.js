@@ -1466,8 +1466,26 @@
     }
 
     try {
+      // Enhanced validation: check if qrcode.js is loaded and functional
       if (typeof window.qrcode !== 'function') {
-        console.warn('Standard qrcode generator not found on window, retrying...');
+        console.error('QR code generator (qrcode.js) not loaded. Ensure <script src="qrcode.js"> is present in HTML.');
+        showToast('二维码生成器未加载，请刷新页面重试', 'error');
+        
+        // Fallback: display text-only pairing information
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          canvas.width = 220;
+          canvas.height = 220;
+          ctx.fillStyle = '#f8f9fa';
+          ctx.fillRect(0, 0, 220, 220);
+          ctx.fillStyle = '#dc2626';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('QR 生成失败', 110, 100);
+          ctx.font = '11px sans-serif';
+          ctx.fillStyle = '#64748b';
+          ctx.fillText('请手动输入 PIN 码配对', 110, 130);
+        }
         return;
       }
 

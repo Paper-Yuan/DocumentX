@@ -5,89 +5,162 @@
 
 :root {
   --primary-font: 'Segoe UI Variable Text', -apple-system, BlinkMacSystemFont, 'Outfit', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --accent: #0078D4;
-  --accent-light: #60CDFF;
-  --accent-glow: rgba(0, 120, 212, 0.25);
+  
+  /* Enhanced color palette with better harmony */
+  --accent: #3B82F6;
+  --accent-light: #60A5FA;
+  --accent-dark: #2563EB;
+  --accent-glow: rgba(59, 130, 246, 0.35);
+  --accent-glow-strong: rgba(59, 130, 246, 0.55);
   --success: #10B981;
+  --success-glow: rgba(16, 185, 129, 0.3);
   --warning: #F59E0B;
+  --warning-glow: rgba(245, 158, 11, 0.3);
   --danger: #EF4444;
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
+  --danger-glow: rgba(239, 68, 68, 0.3);
+  
+  /* Enhanced border radius system for depth */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
   --radius-full: 9999px;
-  --transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Enhanced animation curves - Apple HIG inspired */
+  --ease-smooth: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring: cubic-bezier(0.16, 1.2, 0.3, 1);
+  --ease-authentic: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-decelerate: cubic-bezier(0, 0.55, 0.45, 1);
+  --ease-accelerate: cubic-bezier(0.55, 0, 1, 0.45);
+  
+  /* Transition timing with varied speeds */
+  --transition-fast: 0.15s var(--ease-authentic);
+  --transition-base: 0.25s var(--ease-smooth);
+  --transition-slow: 0.38s var(--ease-spring);
+  --transition-theme: 0.42s var(--ease-smooth);
+  
   --scrollbar-track: #0F0F12;
   --scrollbar-thumb: #2E2E38;
   --scrollbar-thumb-hover: #454556;
 }
 
-/* Dark mode variables (Default) */
+/* Dark mode variables (Default) - Enhanced depth and contrast */
 body.dark-theme {
-  --bg-app: #0F0F12;
-  --bg-sidebar: #18181C;
-  --bg-card: rgba(28, 28, 34, 0.75);
-  --bg-card-hover: rgba(36, 36, 44, 0.9);
-  --bg-input: #1C1C22;
-  --text-main: #FFFFFF;
-  --text-secondary: #A1A1AA;
-  --text-muted: #71717A;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(0, 120, 212, 0.6);
-  --glass: rgba(20, 20, 26, 0.75);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --scrollbar-track: #0F0F12;
-  --scrollbar-thumb: #2E2E38;
-  --scrollbar-thumb-hover: #454556;
+  --bg-app: #0A0A0D;
+  --bg-sidebar: #14141A;
+  --bg-surface: #1A1A24;
+  --bg-card: rgba(26, 26, 36, 0.82);
+  --bg-card-hover: rgba(36, 36, 48, 0.95);
+  --bg-card-active: rgba(45, 45, 60, 1);
+  --bg-input: #1E1E2A;
+  --bg-elevated: rgba(30, 30, 42, 0.92);
+  
+  --text-main: #FAFAFA;
+  --text-secondary: #B4B4C5;
+  --text-muted: #7C7C92;
+  --text-dimmed: #55556A;
+  
+  --border: rgba(255, 255, 255, 0.09);
+  --border-hover: rgba(255, 255, 255, 0.14);
+  --border-focus: rgba(59, 130, 246, 0.65);
+  --border-active: rgba(59, 130, 246, 0.85);
+  
+  --glass: rgba(20, 20, 30, 0.78);
+  --glass-hover: rgba(28, 28, 42, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  
+  --shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.42), 0 1px 4px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.58), 0 4px 12px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.72), 0 8px 20px rgba(0, 0, 0, 0.48);
+  --shadow-glow: 0 0 24px var(--accent-glow), 0 0 8px var(--accent-glow-strong);
+  
+  --scrollbar-track: #0A0A0D;
+  --scrollbar-thumb: #32323E;
+  --scrollbar-thumb-hover: #4A4A5C;
 }
 
-/* Eyecare theme variables (Deeper, soothing warm rice-yellow tone for eye protection) */
+/* Eyecare theme variables - Enhanced warmth and comfort */
 body.eyecare-theme {
-  --bg-app: #EDE4D0; /* Richer, deeper warm rice-yellow */
-  --bg-sidebar: #DFD5BE;
-  --bg-card: #F5EDDC;
-  --bg-card-hover: #FAF4E8;
-  --bg-input: #D9CDAF;
-  --text-main: #000000; /* Pure black text */
-  --text-secondary: #2C281F;
-  --text-muted: #575040;
-  --accent: #000000;
-  --accent-light: #3D3728;
-  --accent-glow: rgba(0, 0, 0, 0.12);
-  --border: rgba(90, 75, 45, 0.22);
-  --border-focus: #000000;
-  --glass: rgba(237, 228, 208, 0.95);
-  --glass-border: rgba(90, 75, 45, 0.22);
-  --shadow-sm: 0 2px 8px rgba(70, 60, 40, 0.08);
-  --shadow-md: 0 8px 24px rgba(70, 60, 40, 0.14);
-  --scrollbar-track: #EDE4D0;
-  --scrollbar-thumb: #C8BFA9;
-  --scrollbar-thumb-hover: #ADA38D;
+  --bg-app: #EBE2CC;
+  --bg-sidebar: #DDD4BA;
+  --bg-surface: #E8DFCB;
+  --bg-card: rgba(247, 240, 228, 0.92);
+  --bg-card-hover: rgba(252, 248, 240, 0.98);
+  --bg-card-active: #FFFBF5;
+  --bg-input: #D7CEB5;
+  --bg-elevated: rgba(242, 235, 220, 0.95);
+  
+  --text-main: #1A1612;
+  --text-secondary: #3D3830;
+  --text-muted: #5F5850;
+  --text-dimmed: #8A847C;
+  
+  --accent: #2E7D56;
+  --accent-light: #3A9968;
+  --accent-dark: #246545;
+  --accent-glow: rgba(46, 125, 86, 0.25);
+  --accent-glow-strong: rgba(46, 125, 86, 0.42);
+  
+  --border: rgba(90, 75, 45, 0.20);
+  --border-hover: rgba(90, 75, 45, 0.32);
+  --border-focus: rgba(46, 125, 86, 0.55);
+  --border-active: rgba(46, 125, 86, 0.75);
+  
+  --glass: rgba(237, 226, 204, 0.88);
+  --glass-hover: rgba(245, 238, 220, 0.95);
+  --glass-border: rgba(90, 75, 45, 0.24);
+  
+  --shadow-sm: 0 2px 10px rgba(70, 60, 40, 0.09), 0 1px 3px rgba(70, 60, 40, 0.06);
+  --shadow-md: 0 8px 26px rgba(70, 60, 40, 0.16), 0 4px 10px rgba(70, 60, 40, 0.10);
+  --shadow-lg: 0 16px 44px rgba(70, 60, 40, 0.22), 0 8px 16px rgba(70, 60, 40, 0.14);
+  --shadow-glow: 0 0 20px rgba(46, 125, 86, 0.18), 0 0 8px rgba(46, 125, 86, 0.28);
+  
+  --scrollbar-track: #EBE2CC;
+  --scrollbar-thumb: #C4BBA2;
+  --scrollbar-thumb-hover: #A8A088;
 }
 
-/* Light theme variables */
+/* Light theme variables - Enhanced clarity and airiness */
 body.light-theme {
-  --bg-app: #F1F4F9;
+  --bg-app: #F4F6FA;
   --bg-sidebar: #FFFFFF;
-  --bg-card: #FFFFFF;
-  --bg-card-hover: #F8FAFC;
-  --bg-input: #E2E8F0;
-  --text-main: #000000; /* Pure black text */
-  --text-secondary: #334155;
-  --text-muted: #64748B;
-  --accent: #000000;
-  --accent-light: #1E293B;
-  --accent-glow: rgba(0, 0, 0, 0.10);
-  --border: rgba(0, 0, 0, 0.12);
-  --border-focus: #000000;
-  --glass: rgba(255, 255, 255, 0.92);
-  --glass-border: rgba(0, 0, 0, 0.08);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.1);
-  --scrollbar-track: #F1F4F9;
-  --scrollbar-thumb: #CBD5E1;
-  --scrollbar-thumb-hover: #94A3B8;
+  --bg-surface: #FAFBFC;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --bg-card-hover: rgba(250, 251, 252, 0.98);
+  --bg-card-active: #F8FAFB;
+  --bg-input: #E7ECF3;
+  --bg-elevated: rgba(255, 255, 255, 0.96);
+  
+  --text-main: #0F172A;
+  --text-secondary: #3E4A5D;
+  --text-muted: #6B7788;
+  --text-dimmed: #939FB0;
+  
+  --accent: #3B82F6;
+  --accent-light: #60A5FA;
+  --accent-dark: #2563EB;
+  --accent-glow: rgba(59, 130, 246, 0.22);
+  --accent-glow-strong: rgba(59, 130, 246, 0.38);
+  
+  --border: rgba(15, 23, 42, 0.10);
+  --border-hover: rgba(15, 23, 42, 0.16);
+  --border-focus: rgba(59, 130, 246, 0.50);
+  --border-active: rgba(59, 130, 246, 0.70);
+  
+  --glass: rgba(255, 255, 255, 0.85);
+  --glass-hover: rgba(255, 255, 255, 0.94);
+  --glass-border: rgba(15, 23, 42, 0.09);
+  
+  --shadow-sm: 0 2px 10px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 8px 26px rgba(15, 23, 42, 0.12), 0 4px 10px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 44px rgba(15, 23, 42, 0.18), 0 8px 16px rgba(15, 23, 42, 0.12);
+  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.15), 0 0 8px rgba(59, 130, 246, 0.25);
+  
+  --scrollbar-track: #F4F6FA;
+  --scrollbar-thumb: #C2CAD9;
+  --scrollbar-thumb-hover: #98A3B8;
 }
 
 /* =========================================================
@@ -162,7 +235,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Universal silky transition across theme switches */
+/* Universal smooth transitions with enhanced timing */
 body,
 .app-header,
 .desktop-sidebar,
@@ -190,19 +263,70 @@ body,
 .log-terminal,
 .device-meta-chip,
 .device-platform-tag {
-  transition: background-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color var(--transition-theme),
+              border-color var(--transition-theme),
+              color var(--transition-base),
+              box-shadow var(--transition-theme),
+              transform var(--transition-base);
 }
 
-/* App Header */
+/* Enhanced micro-interactions for interactive elements */
+.btn,
+.icon-btn,
+.device-card,
+.file-item,
+.transfer-card,
+.nav-item,
+.theme-seg-btn {
+  transition: all var(--transition-base);
+  will-change: transform;
+}
+
+.btn:hover,
+.icon-btn:hover,
+.device-card:hover,
+.file-item:hover,
+.nav-item:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn:active,
+.icon-btn:active,
+.device-card:active,
+.file-item:active {
+  transform: translateY(0);
+  transition-duration: 0.1s;
+}
+
+/* Smooth scale animation for badges and pills */
+.badge,
+.device-status-pill,
+.online-badge {
+  transition: all var(--transition-fast);
+  animation: badge-entrance 0.35s var(--ease-spring) backwards;
+}
+
+@keyframes badge-entrance {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* App Header - Enhanced glass morphism */
 .app-header {
   height: 54px;
   background: var(--glass);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(24px) saturate(190%) brightness(105%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%) brightness(105%);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 1px 0 0 var(--glass-border),
+              0 4px 16px rgba(0, 0, 0, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
