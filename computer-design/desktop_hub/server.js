@@ -80,17 +80,36 @@ let LOCAL_IP = getLocalIp();
 
 // Ensure safe download vault directory exists (supports persistent config)
 let DOWNLOAD_DIR = path.join(os.homedir(), 'Downloads', 'SafeDrop');
+// Device custom names storage (fingerprint -> custom name mapping)
+let DEVICE_NAMES = {};
+
 try {
   if (fs.existsSync(CONFIG_FILE)) {
     const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
     if (cfg.downloadDir && typeof cfg.downloadDir === 'string') {
       DOWNLOAD_DIR = path.resolve(cfg.downloadDir);
     }
+    if (cfg.deviceNames && typeof cfg.deviceNames === 'object') {
+      DEVICE_NAMES = cfg.deviceNames;
+    }
   }
 } catch (_) {}
 
 if (!fs.existsSync(DOWNLOAD_DIR)) {
   fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+}
+
+// Save device custom names to config file
+function saveDeviceNames() {
+  try {
+    const existingConfig = fs.existsSync(CONFIG_FILE) 
+      ? JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) 
+      : {};
+    existingConfig.deviceNames = DEVICE_NAMES;
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(existingConfig, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to save device names:', err);
+  }
 }
 
 // SSRF validation: only forward to valid private RFC1918 IPv4 addresses
@@ -219,6 +238,12 @@ function upsertOrMergeDevice(data) {
     matchedDev.ip = ip;
     matchedDev.lastSeen = now;
     matchedDev.status = 'online';
+    
+    // NEW: Load custom name from persistent storage if exists
+    if (matchedDev.fingerprint && DEVICE_NAMES[matchedDev.fingerprint]) {
+      matchedDev.customName = DEVICE_NAMES[matchedDev.fingerprint];
+    }
+    
     return matchedDev;
   }
 
@@ -235,6 +260,11 @@ function upsertOrMergeDevice(data) {
     lastSeen: now,
     status: 'online'
   };
+
+  // NEW: Load custom name from persistent storage if exists
+  if (newDev.fingerprint && DEVICE_NAMES[newDev.fingerprint]) {
+    newDev.customName = DEVICE_NAMES[newDev.fingerprint];
+  }
 
   onlineDevices.set(devId, newDev);
   return newDev;
@@ -436,6 +466,80 @@ function handleApi(pathname, req, res, urlObj) {
       });
       jsonResponse(res, 200, { code: 0, message: 'registered', device: merged });
     });
+    return;
+  }
+
+  // 4.1 GET /api/v1/devices/names - Get all device custom names
+  if (pathname === '/api/v1/devices/names' && req.method === 'GET') {
+    jsonResponse(res, 200, { 
+      code: 0, 
+      deviceNames: DEVICE_NAMES 
+    });
+    return;
+  }
+
+  // 4.2 PUT /api/v1/devices/names/:fingerprint - Set custom name for a device
+  if (pathname.startsWith('/api/v1/devices/names/') && req.method === 'PUT') {
+    const fingerprint = pathname.replace('/api/v1/devices/names/', '');
+    if (!fingerprint || fingerprint.length < 8) {
+      return jsonResponse(res, 400, { error: 'Invalid fingerprint' });
+    }
+    
+    readJsonBody(req, (err, body) => {
+      if (err || !body) return jsonResponse(res, 400, { error: 'Invalid JSON body' });
+      
+      const customName = body.customName;
+      if (!customName || typeof customName !== 'string' || customName.trim().length === 0) {
+        return jsonResponse(res, 400, { error: 'customName is required and must be non-empty' });
+      }
+      
+      // Save custom name
+      DEVICE_NAMES[fingerprint] = customName.trim();
+      saveDeviceNames();
+      
+      // Update online devices if this device is currently connected
+      for (const [id, dev] of onlineDevices.entries()) {
+        if (dev.fingerprint === fingerprint) {
+          dev.customName = customName.trim();
+        }
+      }
+      
+      jsonResponse(res, 200, { 
+        code: 0, 
+        message: 'Device name updated',
+        fingerprint: fingerprint,
+        customName: customName.trim()
+      });
+    });
+    return;
+  }
+
+  // 4.3 DELETE /api/v1/devices/names/:fingerprint - Remove custom name
+  if (pathname.startsWith('/api/v1/devices/names/') && req.method === 'DELETE') {
+    const fingerprint = pathname.replace('/api/v1/devices/names/', '');
+    if (!fingerprint || fingerprint.length < 8) {
+      return jsonResponse(res, 400, { error: 'Invalid fingerprint' });
+    }
+    
+    if (DEVICE_NAMES[fingerprint]) {
+      delete DEVICE_NAMES[fingerprint];
+      saveDeviceNames();
+      
+      // Remove customName from online devices
+      for (const [id, dev] of onlineDevices.entries()) {
+        if (dev.fingerprint === fingerprint) {
+          delete dev.customName;
+        }
+      }
+      
+      jsonResponse(res, 200, { 
+        code: 0, 
+        message: 'Device name removed',
+        fingerprint: fingerprint
+      });
+    } else {
+      jsonResponse(res, 404, { error: 'Device name not found' });
+    }
     return;
   }
 

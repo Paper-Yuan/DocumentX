@@ -96,6 +96,7 @@
     initModalEvents();
     initSettingsEvents();
     initChatEvents();
+    loadDeviceNamesManager(); // NEW: Load device names manager on init
 
     if (state.isMobile) {
       if (dom.currentRoleBadge) dom.currentRoleBadge.textContent = '移动便携端';
@@ -305,6 +306,13 @@
     } catch (_) {}
   }
 
+  // Helper function to get device display name with priority: customName > name > IP
+  function getDeviceDisplayName(device) {
+    if (device.customName) return device.customName;
+    if (device.name) return device.name;
+    return `设备 (${device.ip})`;
+  }
+
   // 6. Device topology discovery and smart merging
   async function fetchDevices() {
     try {
@@ -404,7 +412,7 @@
             </div>
             <div class="device-info">
               <div class="device-name-row">
-                <span class="device-name" title="${escapeHtml(dev.name)}">${escapeHtml(dev.name)}</span>
+                <span class="device-name" title="${escapeHtml(getDeviceDisplayName(dev))}">${escapeHtml(getDeviceDisplayName(dev))}</span>
                 <span class="device-platform-tag ${isPc ? 'pc' : 'mobile'}">${platformName}</span>
                 <span class="device-status-pill online"><span class="pill-dot"></span>在线</span>
               </div>
@@ -1709,6 +1717,122 @@
       showToast('已在系统文件资源管理器中打开沙箱目录');
     } catch (e) {
       showToast('打开目录失败');
+    }
+  }
+
+  // NEW: Load and render device names management UI
+  async function loadDeviceNamesManager() {
+    const container = document.getElementById('deviceNamesManager');
+    if (!container) return;
+
+    try {
+      const [namesRes, devicesRes] = await Promise.all([
+        fetch('/api/v1/devices/names'),
+        fetch('/api/v1/devices')
+      ]);
+      
+      const namesData = await namesRes.json();
+      const devicesData = await devicesRes.json();
+      
+      const deviceNames = namesData.deviceNames || {};
+      const devices = devicesData.devices || [];
+      
+      const deviceMap = new Map();
+      
+      devices.forEach(dev => {
+        if (dev.fingerprint && dev.fingerprint.length >= 8) {
+          deviceMap.set(dev.fingerprint, {
+            fingerprint: dev.fingerprint,
+            name: dev.name || '未知设备',
+            customName: deviceNames[dev.fingerprint] || '',
+            ip: dev.ip,
+            os: dev.os || 'unknown',
+            status: 'online'
+          });
+        }
+      });
+      
+      Object.keys(deviceNames).forEach(fp => {
+        if (!deviceMap.has(fp)) {
+          deviceMap.set(fp, {
+            fingerprint: fp,
+            name: '离线设备',
+            customName: deviceNames[fp],
+            ip: '-',
+            os: 'unknown',
+            status: 'offline'
+          });
+        }
+      });
+      
+      if (deviceMap.size === 0) {
+        container.innerHTML = '<div class="device-name-empty">暂无已连接设备</div>';
+        return;
+      }
+      
+      container.innerHTML = Array.from(deviceMap.values()).map(dev => `
+        <div class="device-name-card">
+          <div class="device-name-header">
+            <div class="device-name-icon ${dev.os === 'android' ? 'android' : 'pc'}">
+              ${dev.os === 'android' ? '📱' : '💻'}
+            </div>
+            <div class="device-name-info">
+              <div class="device-name-title">${escapeHtml(dev.name)}</div>
+              <div class="device-name-meta">指纹: ${escapeHtml(dev.fingerprint.substring(0, 12))}... · ${dev.status === 'online' ? '<span style="color: var(--success);">在线</span>' : '<span style="color: var(--text-muted);">离线</span>'}</div>
+            </div>
+          </div>
+          <div class="device-name-controls">
+            <input type="text" class="device-name-input" placeholder="设置自定义名称..." value="${escapeHtml(dev.customName)}" data-fingerprint="${escapeHtml(dev.fingerprint)}"/>
+            <button class="btn btn-primary btn-sm save-device-name" data-fingerprint="${escapeHtml(dev.fingerprint)}">保存</button>
+            ${dev.customName ? `<button class="btn btn-secondary btn-sm delete-device-name" data-fingerprint="${escapeHtml(dev.fingerprint)}">删除</button>` : ''}
+          </div>
+        </div>
+      `).join('');
+      
+      container.querySelectorAll('.save-device-name').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const fingerprint = e.target.dataset.fingerprint;
+          const input = container.querySelector(`.device-name-input[data-fingerprint="${fingerprint}"]`);
+          const customName = input?.value.trim();
+          if (!customName) return showToast('请输入自定义名称');
+          try {
+            const res = await fetch(`/api/v1/devices/names/${fingerprint}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ customName })
+            });
+            if (res.ok) {
+              showToast('设备名称已保存');
+              loadDeviceNamesManager();
+              fetchDevices();
+            } else {
+              const data = await res.json();
+              showToast(data.error || '保存失败');
+            }
+          } catch (_) { showToast('保存失败'); }
+        });
+      });
+      
+      container.querySelectorAll('.delete-device-name').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const fingerprint = e.target.dataset.fingerprint;
+          if (!confirm('确定要删除此设备的自定义名称吗？')) return;
+          try {
+            const res = await fetch(`/api/v1/devices/names/${fingerprint}`, { method: 'DELETE' });
+            if (res.ok) {
+              showToast('设备名称已删除');
+              loadDeviceNamesManager();
+              fetchDevices();
+            } else {
+              const data = await res.json();
+              showToast(data.error || '删除失败');
+            }
+          } catch (_) { showToast('删除失败'); }
+        });
+      });
+    } catch (err) {
+      console.error('Failed to load device names:', err);
+      container.innerHTML = '<div class="device-name-empty" style="color: var(--danger);">加载设备列表失败</div>';
     }
   }
 

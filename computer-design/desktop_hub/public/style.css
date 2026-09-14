@@ -2525,3 +2525,160 @@ body.light-theme .open-chat-btn {
   background: #F1F5F9;
   border-color: #CBD5E1;
 }
+
+/* ==========================================================================
+   Device Names Management (Phase 2 - Corporate Trust Style)
+   ========================================================================== */
+
+.device-name-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.device-name-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-sm);
+}
+
+.device-name-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-primary);
+}
+
+.device-name-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.device-name-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+  transition: transform var(--transition-base);
+}
+
+.device-name-icon.android {
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.device-name-icon.pc {
+  background: rgba(79, 70, 229, 0.12);
+}
+
+.device-name-card:hover .device-name-icon {
+  transform: scale(1.05);
+}
+
+.device-name-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.device-name-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.device-name-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.device-name-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.device-name-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 14px;
+  font-family: var(--primary-font);
+  transition: all var(--transition-base);
+}
+
+.device-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  background: var(--bg-surface);
+}
+
+.device-name-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Eyecare theme overrides */
+body.eyecare-theme .device-name-card {
+  background: rgba(247, 240, 228, 0.92);
+  border-color: rgba(90, 75, 45, 0.20);
+}
+
+body.eyecare-theme .device-name-icon.android {
+  background: rgba(46, 125, 86, 0.12);
+}
+
+body.eyecare-theme .device-name-icon.pc {
+  background: rgba(46, 125, 86, 0.08);
+}
+
+body.eyecare-theme .device-name-input {
+  background: #D7CEB5;
+  border-color: rgba(90, 75, 45, 0.20);
+  color: #1A1612;
+}
+
+body.eyecare-theme .device-name-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(46, 125, 86, 0.15);
+}
+
+/* Light theme overrides */
+body.light-theme .device-name-card {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: #E2E8F0;
+}
+
+body.light-theme .device-name-icon.android {
+  background: rgba(16, 185, 129, 0.10);
+}
+
+body.light-theme .device-name-icon.pc {
+  background: rgba(79, 70, 229, 0.10);
+}
+
+body.light-theme .device-name-input {
+  background: #F1F5F9;
+  border-color: #E2E8F0;
+  color: #0F172A;
+}
+
+body.light-theme .device-name-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}

@@ -375,6 +375,20 @@
             <button class="btn btn-secondary btn-sm" id="refreshPinBtn">刷新 PIN</button>
           </div>
 
+          <!-- NEW: Device Names Management Section -->
+          <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 12px;">
+            <div class="setting-info" style="width: 100%;">
+              <span class="setting-title">🏷️ 已连接设备管理</span>
+              <span class="setting-desc">为设备设置自定义名称（基于 X25519 指纹，跨网络保持一致）</span>
+            </div>
+            <div id="deviceNamesManager" style="width: 100%; display: flex; flex-direction: column; gap: 10px;">
+              <!-- Dynamically populated device name cards -->
+              <div class="device-name-empty" style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 14px;">
+                暂无已连接设备
+              </div>
+            </div>
+          </div>
+
           <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 10px;">
             <div class="setting-info" style="width: 100%;">
               <span class="setting-title">文件储存与沙箱目录管理</span>
