@@ -1,6 +1,6 @@
 /**
  * SafeDrop Hub Frontend Responsive Controller
- * Features radar canvas animation, device topology discovery, 1MB chunked streaming upload,
+ * Features radar canvas animation, device topology discovery, 4MB chunked streaming upload,
  * Reed-Solomon QR code matrix generator, vault storage management, three-state theme switcher, and cross-platform interaction.
  */
 
@@ -1256,7 +1256,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           </svg>
-          <p>已与 ${escapeHtml(dev.name)} 建立加密传输通道</p>
+          <p>已与 ${escapeHtml(dev.name)} 建立局域网连接</p>
           <span>可在此窗口直接拖入文件投送，或在下方输入消息</span>
         </div>
       `;

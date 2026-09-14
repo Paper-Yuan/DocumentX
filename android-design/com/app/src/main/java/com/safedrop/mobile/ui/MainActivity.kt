@@ -1503,7 +1503,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Stream encrypted chunk upload from Android to target peer (PC Desktop Hub or another Android phone)
+     * Stream chunked upload from Android to target peer (PC Desktop Hub or another Android phone).
+     * Chunks go out as plaintext; CryptoEngine is not wired into this path yet.
      */
     private fun startStreamingUpload(uri: Uri) {
         val fileName = resolveFileName(uri)
@@ -1613,7 +1614,7 @@ class MainActivity : AppCompatActivity() {
                     transferMsg.speed = ""
                     transferMsg.status = "completed"
                     channelMessageAdapter.notifyDataSetChanged()
-                    Toast.makeText(this@MainActivity, "投送成功：已加密发送至 $targetName！", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "投送成功：已发送至 $targetName！", Toast.LENGTH_LONG).show()
                 }
 
             } catch (e: Exception) {

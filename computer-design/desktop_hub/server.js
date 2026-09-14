@@ -1,8 +1,10 @@
 /**
- * SafeDrop Desktop Hub - Lightweight Embedded Security Hub Server
- * 100% native Node.js, zero external dependencies, rapid startup, memory < 30MB.
- * Features X25519 key agreement, AES-256-GCM chunked streaming, AP isolation penetration,
- * and local network device topology discovery.
+ * SafeDrop Desktop Hub - Lightweight Embedded Hub Server
+ * 100% native Node.js, zero external dependencies, rapid startup.
+ * Features UDP beacon device discovery, chunked streaming transfer (4MB chunks) with
+ * optional gzip, and pairing via a rotating PIN / one-time token.
+ * Note: transfer payloads are currently unencrypted - the X25519 key pair is used for
+ * the device fingerprint and handshake identity only, not for payload encryption.
  */
 
 const http = require('http');

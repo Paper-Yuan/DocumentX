@@ -26,14 +26,14 @@
     <string name="send_file">投送文件</string>
     <string name="select_from_gallery">相册媒体</string>
     <string name="select_from_files">文档文件</string>
-    <string name="transferring">正在加密流式传输...</string>
+    <string name="transferring">正在分块流式传输...</string>
     <string name="transfer_complete">传输完成，已存入沙箱</string>
     <string name="cancel_transfer">取消传输</string>
 
     <!-- System Share Target -->
     <string name="share_target_title">一键投送到电脑端</string>
     <string name="select_pc_hint">选择接收文件的电脑中枢：</string>
-    <string name="share_sending">正在打包加密投送...</string>
+    <string name="share_sending">正在打包投送...</string>
 
     <!-- Runtime Permissions -->
     <string name="camera_permission_required">需要摄像头权限以扫描电脑端动态配对码</string>

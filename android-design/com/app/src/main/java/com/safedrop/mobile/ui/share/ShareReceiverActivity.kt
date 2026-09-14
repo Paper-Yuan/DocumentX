@@ -14,7 +14,7 @@ import com.safedrop.mobile.service.TransferForegroundService
  * Features:
  * 1. Responds to Android global ACTION_SEND and ACTION_SEND_MULTIPLE intents.
  * 2. Receives file streams shared from third-party apps (photos, file managers, chat apps).
- * 3. Extracts Uri metadata and invokes foreground encrypted transfer service.
+ * 3. Extracts Uri metadata and invokes the foreground transfer service.
  */
 class ShareReceiverActivity : AppCompatActivity() {
 

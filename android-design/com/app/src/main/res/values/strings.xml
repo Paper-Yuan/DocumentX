@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SafeDrop</string>
-    <string name="app_subtitle">Cross-platform Secure Transfer</string>
+    <string name="app_subtitle">Local Network File Transfer</string>
 
     <!-- Navigation -->
     <string name="nav_radar">Radar</string>
@@ -26,14 +26,14 @@
     <string name="send_file">Send File</string>
     <string name="select_from_gallery">Media Gallery</string>
     <string name="select_from_files">Documents</string>
-    <string name="transferring">Streaming encrypted file...</string>
+    <string name="transferring">Streaming file in chunks...</string>
     <string name="transfer_complete">Transfer complete, saved to vault</string>
     <string name="cancel_transfer">Cancel Transfer</string>
 
     <!-- Share Receiver -->
     <string name="share_target_title">Send to PC with SafeDrop</string>
     <string name="select_pc_hint">Select target Desktop Hub:</string>
-    <string name="share_sending">Encrypting and transferring...</string>
+    <string name="share_sending">Packaging and sending...</string>
 
     <!-- Permissions -->
     <string name="camera_permission_required">Camera permission required to scan PC QR code</string>
