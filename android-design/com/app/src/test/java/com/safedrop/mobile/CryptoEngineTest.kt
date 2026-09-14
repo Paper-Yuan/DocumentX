@@ -27,6 +27,60 @@ class CryptoEngineTest {
     private val crypto = CryptoEngine()
 
     @Test
+    fun testPhoneToPhoneEncryptedExchange() {
+        // Simulates the phone-to-phone path end to end at the protocol level:
+        // sender = MobileTransferServer, receiver = MobileTransferServer on another phone.
+        val sender = CryptoEngine()
+        val receiver = CryptoEngine()
+
+        // 1. Sender initiates: sends its ephemeral public key.
+        val senderKeyPair = sender.generateEphemeralKeyPair()
+        val senderRawPub = sender.extractRawPublicKey(senderKeyPair)
+
+        // 2. Receiver answers with its own per-session ephemeral key pair.
+        val receiverSessionKeyPair = receiver.generateEphemeralKeyPair()
+        val receiverSessionRawPub = receiver.extractRawPublicKey(receiverSessionKeyPair)
+
+        val sessionId = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+        val pin = "482913"
+
+        // 3. Both sides derive the same key from their own private key and the peer's public key.
+        val senderKey = sender.deriveSessionKey(senderKeyPair, receiverSessionRawPub, sessionId, pin)
+        val receiverKey = receiver.deriveSessionKey(receiverSessionKeyPair, senderRawPub, sessionId, pin)
+        assertArrayEquals(
+            "Both phones must derive the same session key",
+            senderKey.encoded,
+            receiverKey.encoded
+        )
+
+        // 4. Sender proves knowledge of the PIN; receiver accepts and can answer with its proof.
+        val proof = sender.bytesToHex(sender.clientProof(senderKey, sessionId))
+        assertTrue(
+            "Receiver must accept the sender's proof",
+            receiver.verifyServerProof(receiverKey, sessionId, sender.bytesToHex(sender.serverProof(receiverKey, sessionId)))
+        )
+        assertArrayEquals(
+            "Proof sent by the sender matches what the receiver computes",
+            receiver.clientProof(receiverKey, sessionId),
+            sender.hexToBytes(proof)
+        )
+
+        // 5. Sender seals a chunk; the receiver opens it.
+        val taskId = "task_phone_phone"
+        val payload = ByteArray(200 * 1024) { (it % 251).toByte() }
+        val sealed = sender.encryptChunk(payload, senderKey, taskId, 0)
+        val opened = receiver.decryptChunk(sealed, receiverKey, taskId, 0)
+        assertArrayEquals("Receiver must recover the exact plaintext", payload, opened)
+
+        // 6. A phone without the PIN must not be able to derive the key.
+        val impostorKey = sender.deriveSessionKey(senderKeyPair, receiverSessionRawPub, sessionId, "000000")
+        assertFalse(
+            "A wrong PIN must not reproduce the session key",
+            senderKey.encoded.contentEquals(impostorKey.encoded)
+        )
+    }
+
+    @Test
     fun testX25519KeyAgreementAndHKDF() {
         // 1. Generate Alice (mobile) and Bob (desktop) ephemeral keypairs
         val alicePair = crypto.generateEphemeralKeyPair()

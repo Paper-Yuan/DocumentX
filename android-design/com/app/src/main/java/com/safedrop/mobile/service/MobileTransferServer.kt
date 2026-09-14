@@ -16,15 +16,20 @@ import java.net.Socket
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.UUID
+import javax.crypto.SecretKey
 
 /**
  * Embedded lightweight HTTP server running on Android.
  * Features:
- * 1. P2P Handshake & Key Exchange (init / verify / pin refresh)
- * 2. 1MB Chunked Streaming Upload receiver
+ * 1. Encrypted P2P handshake (ECDH + HKDF + HMAC proof) and key agreement
+ * 2. Chunked streaming upload receiver (AES-256-GCM sealed chunks)
  * 3. Vault file listing & download stream
  * 4. Standalone Web File Transfer Portal (/portal & /) for browser direct transfer
+ *
+ * The transport protocol mirrors computer-design/desktop_hub/crypto_protocol.js, so the
+ * hub, the desktop UI, a browser and another phone can all talk to this server the same way.
  */
 class MobileTransferServer(
     private val context: Context,
@@ -40,6 +45,54 @@ class MobileTransferServer(
     private val taskBytesMap = mutableMapOf<String, Long>()
     private val taskStartTimeMap = mutableMapOf<String, Long>()
     private val cryptoEngine = CryptoEngine()
+    private val secureRandom = SecureRandom()
+
+    /** Ephemeral E2E sessions created by the handshake. Keys live in memory only. */
+    private class E2eSession(
+        /** The peer's raw X25519 public key, kept so the shared secret can be derived at verify time. */
+        val peerRawPublicKey: ByteArray,
+        /** The peer's ephemeral key pair, unique to this session. */
+        val keyPair: java.security.KeyPair,
+        val clientIp: String
+    ) {
+        var key: SecretKey? = null
+        var verified: Boolean = false
+        val createdAt: Long = System.currentTimeMillis()
+        var lastSeen: Long = createdAt
+    }
+
+    private val e2eSessions = mutableMapOf<String, E2eSession>()
+    private val pairingAttempts = mutableMapOf<String, Int>()
+    private val sessionTtlMs = 10 * 60 * 1000L
+    private val pairingMaxFailures = 8
+
+    /** Only loopback is trusted; it can only come from this device. */
+    private fun isTrustedLocal(ip: String?): Boolean {
+        val value = ip ?: return false
+        return value == "127.0.0.1" || value == "::1" || value.startsWith("127.") || value == "localhost"
+    }
+
+    private fun pruneSessions() {
+        val now = System.currentTimeMillis()
+        val expired = e2eSessions.filter { now - it.value.createdAt > sessionTtlMs }.keys.toList()
+        for (id in expired) e2eSessions.remove(id)
+    }
+
+    /** Look up a verified session, bound to the requesting IP so an id cannot be replayed. */
+    private fun getVerifiedSession(sessionId: String?, clientIp: String?): E2eSession? {
+        if (sessionId.isNullOrEmpty()) return null
+        pruneSessions()
+        val session = e2eSessions[sessionId] ?: return null
+        if (!session.verified || session.key == null) return null
+        if (session.clientIp != (clientIp ?: "")) return null
+        session.lastSeen = System.currentTimeMillis()
+        return session
+    }
+
+    private fun sendUnauthorized(outputStream: OutputStream, message: String) {
+        val body = """{"code":401,"error":"$message"}""".toByteArray(StandardCharsets.UTF_8)
+        sendHttpResponse(outputStream, 401, "Unauthorized", "application/json", body)
+    }
 
     var port: Int = 8899
         private set
@@ -61,10 +114,29 @@ class MobileTransferServer(
     var currentToken: String = UUID.randomUUID().toString().substring(0, 12)
         private set
 
+    // Previous credentials stay valid for a short grace window so multi-device pairing
+    // does not require re-entering the code mid-handshake.
+    private var prevPin: String? = null
+    private var prevToken: String? = null
+    private var prevPinTime: Long = 0
+    private val graceWindowMs = 60_000L
+
     fun refreshPairingPin(): Pair<String, String> {
+        prevPin = currentPin
+        prevToken = currentToken
+        prevPinTime = System.currentTimeMillis()
         currentPin = (100000 + (Math.random() * 900000).toInt()).toString()
         currentToken = UUID.randomUUID().toString().substring(0, 12)
         return Pair(currentPin, currentToken)
+    }
+
+    /** Candidate secrets accepted by the handshake, including the recent grace window. */
+    private fun pairingSecretCandidates(): List<String> {
+        val now = System.currentTimeMillis()
+        val candidates = mutableListOf(currentPin, currentToken)
+        if (prevPin != null && now - prevPinTime < graceWindowMs) candidates.add(prevPin!!)
+        if (prevToken != null && now - prevPinTime < graceWindowMs) candidates.add(prevToken!!)
+        return candidates
     }
 
     fun start(preferPort: Int = 8899): Int {
@@ -111,6 +183,9 @@ class MobileTransferServer(
                 val inputStream = BufferedInputStream(s.getInputStream())
                 val outputStream = BufferedOutputStream(s.getOutputStream())
 
+                // TCP source address of the peer, used to bind sessions and rate limit pairing.
+                val clientIp = s.inetAddress?.hostAddress?.removePrefix("::ffff:") ?: "unknown"
+
                 // 1. Parse HTTP Request Line & Headers
                 val headers = mutableMapOf<String, String>()
                 val requestLine = readLine(inputStream) ?: return
@@ -145,10 +220,12 @@ class MobileTransferServer(
                 }
 
                 // GET /api/v1/info
+                // Pairing secrets are disclosed only to loopback callers; remote devices must
+                // read them from this device's screen or QR code, which is what gives the
+                // pairing step its value.
                 if (path == "/api/v1/info" && method == "GET") {
                     val localIp = NetworkHelper.getLocalWifiIpv4(context)
-                    val qrUri = "safedrop://pair?ip=$localIp&port=$port&fp=$fingerprint&token=$currentToken&pin=$currentPin"
-                    val webUrl = "http://$localIp:$port/portal?pin=$currentPin&token=$currentToken&fp=$fingerprint"
+                    val trusted = isTrustedLocal(clientIp)
 
                     val infoObj = JSONObject().apply {
                         put("code", 0)
@@ -159,10 +236,8 @@ class MobileTransferServer(
                         put("localIp", localIp)
                         put("port", port)
                         put("fingerprint", fingerprint)
-                        put("pin", currentPin)
-                        put("token", currentToken)
-                        put("qrUri", qrUri)
-                        put("webUrl", webUrl)
+                        put("pinRequired", true)
+                        put("secretsDisclosed", trusted)
                         put("host", JSONObject().apply {
                             put("id", deviceId)
                             put("name", deviceName)
@@ -171,18 +246,54 @@ class MobileTransferServer(
                             put("fingerprint", fingerprint)
                             put("os", "android")
                         })
+                        if (trusted) {
+                            put("pin", currentPin)
+                            put("token", currentToken)
+                            put("qrUri", "safedrop://pair?ip=$localIp&port=$port&fp=$fingerprint&token=$currentToken&pin=$currentPin")
+                            put("webUrl", "http://$localIp:$port/portal?pin=$currentPin&token=$currentToken&fp=$fingerprint")
+                        }
                     }
                     sendHttpResponse(outputStream, 200, "OK", "application/json", infoObj.toString().toByteArray(StandardCharsets.UTF_8))
                     return
                 }
 
                 // POST /api/v1/handshake/init
+                // The peer sends an ephemeral public key; we answer with ours and keep the
+                // ECDH shared secret for this session only.
                 if (path == "/api/v1/handshake/init" && method == "POST") {
-                    val sessionId = "sess_${System.currentTimeMillis()}_${(1000..9999).random()}"
+                    val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
+                    val bodyStr = readBodyString(inputStream, contentLength)
+                    val bodyJson = try { JSONObject(bodyStr) } catch (_: Exception) { JSONObject() }
+                    val clientPubHex = bodyJson.optString("public_key", "")
+
+                    val clientRawPub = try {
+                        cryptoEngine.hexToBytes(clientPubHex)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (clientRawPub == null || clientRawPub.size != 32) {
+                        val err = """{"code":400,"error":"public_key must be a 32-byte hex X25519 key"}"""
+                        sendHttpResponse(outputStream, 400, "Bad Request", "application/json", err.toByteArray(StandardCharsets.UTF_8))
+                        return
+                    }
+
+                    // Each session gets its own ephemeral key pair, so forward secrecy holds
+                    // even though the device identity key above is long-lived.
+                    val sessionKeyPair = cryptoEngine.generateEphemeralKeyPair()
+                    val sessionRawPubHex = cryptoEngine.bytesToHex(cryptoEngine.extractRawPublicKey(sessionKeyPair))
+                    val sessionId = cryptoEngine.bytesToHex(secureRandom.generateSeed(16))
+                    e2eSessions[sessionId] = E2eSession(
+                        peerRawPublicKey = clientRawPub,
+                        keyPair = sessionKeyPair,
+                        clientIp = clientIp
+                    )
+
                     val respObj = JSONObject().apply {
                         put("code", 0)
+                        put("protocol", CryptoEngine.PROTOCOL)
                         put("session_id", sessionId)
-                        put("server_public_key", rawPubKeyHex)
+                        put("curve", "x25519")
+                        put("server_public_key", sessionRawPubHex)
                         put("pin_required", true)
                         put("fingerprint", fingerprint)
                     }
@@ -191,34 +302,77 @@ class MobileTransferServer(
                 }
 
                 // POST /api/v1/handshake/verify
+                // The pairing secret never crosses the wire: the peer proves it derived the same
+                // session key by sending an HMAC over the session id.
                 if (path == "/api/v1/handshake/verify" && method == "POST") {
+                    if ((pairingAttempts[clientIp] ?: 0) >= pairingMaxFailures) {
+                        val err = """{"code":429,"error":"Too many pairing attempts. Try again later."}"""
+                        sendHttpResponse(outputStream, 429, "Too Many Requests", "application/json", err.toByteArray(StandardCharsets.UTF_8))
+                        return
+                    }
+
                     val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
                     val bodyStr = readBodyString(inputStream, contentLength)
                     val bodyJson = try { JSONObject(bodyStr) } catch (_: Exception) { JSONObject() }
-                    val pin = bodyJson.optString("pin", "")
-                    val token = bodyJson.optString("token", "")
+                    val sessionId = bodyJson.optString("session_id", "")
+                    val proof = bodyJson.optString("proof", "")
 
-                    if ((pin.isNotEmpty() && pin == currentPin) || (token.isNotEmpty() && token == currentToken)) {
-                        // Success: Rotate credentials for subsequent pairing sessions
-                        refreshPairingPin()
-                        val respObj = JSONObject().apply {
-                            put("code", 0)
-                            put("status", "verified")
-                            put("message", "Trust established successfully")
-                        }
-                        sendHttpResponse(outputStream, 200, "OK", "application/json", respObj.toString().toByteArray(StandardCharsets.UTF_8))
-                    } else {
-                        val errObj = JSONObject().apply {
-                            put("code", 403)
-                            put("error", "PIN or token verification failed")
-                        }
-                        sendHttpResponse(outputStream, 403, "Forbidden", "application/json", errObj.toString().toByteArray(StandardCharsets.UTF_8))
+                    val session = e2eSessions[sessionId]
+                    if (session == null || session.clientIp != clientIp) {
+                        pairingAttempts[clientIp] = (pairingAttempts[clientIp] ?: 0) + 1
+                        val err = """{"code":403,"error":"Unknown or expired session"}"""
+                        sendHttpResponse(outputStream, 403, "Forbidden", "application/json", err.toByteArray(StandardCharsets.UTF_8))
+                        return
                     }
+
+                    var matchedKey: SecretKey? = null
+                    for (secret in pairingSecretCandidates()) {
+                        val candidate = try {
+                            cryptoEngine.deriveSessionKey(session.keyPair, session.peerRawPublicKey, sessionId, secret)
+                        } catch (_: Exception) {
+                            continue
+                        }
+                        val expected = cryptoEngine.clientProof(candidate, sessionId)
+                        val provided = try { cryptoEngine.hexToBytes(proof) } catch (_: Exception) { null }
+                        if (provided != null && MessageDigest.isEqual(expected, provided)) {
+                            matchedKey = candidate
+                            break
+                        }
+                    }
+
+                    if (matchedKey == null) {
+                        pairingAttempts[clientIp] = (pairingAttempts[clientIp] ?: 0) + 1
+                        val err = """{"code":403,"error":"Pairing proof verification failed"}"""
+                        sendHttpResponse(outputStream, 403, "Forbidden", "application/json", err.toByteArray(StandardCharsets.UTF_8))
+                        return
+                    }
+
+                    session.key = matchedKey
+                    session.verified = true
+                    session.lastSeen = System.currentTimeMillis()
+                    pairingAttempts.remove(clientIp)
+
+                    // Rotate credentials only after a successful pairing.
+                    refreshPairingPin()
+
+                    val respObj = JSONObject().apply {
+                        put("code", 0)
+                        put("status", "verified")
+                        put("session_id", sessionId)
+                        put("server_proof", cryptoEngine.bytesToHex(cryptoEngine.serverProof(matchedKey, sessionId)))
+                        put("message", "Encrypted session established")
+                    }
+                    sendHttpResponse(outputStream, 200, "OK", "application/json", respObj.toString().toByteArray(StandardCharsets.UTF_8))
                     return
                 }
 
                 // POST /api/v1/pin/refresh
                 if (path == "/api/v1/pin/refresh" && method == "POST") {
+                    if (!isTrustedLocal(clientIp)) {
+                        val err = """{"code":403,"error":"Pairing credentials can only be refreshed on the device itself"}"""
+                        sendHttpResponse(outputStream, 403, "Forbidden", "application/json", err.toByteArray(StandardCharsets.UTF_8))
+                        return
+                    }
                     refreshPairingPin()
                     val localIp = NetworkHelper.getLocalWifiIpv4(context)
                     val qrUri = "safedrop://pair?ip=$localIp&port=$port&fp=$fingerprint&token=$currentToken&pin=$currentPin"
@@ -238,8 +392,25 @@ class MobileTransferServer(
                     return
                 }
 
-                // POST /api/v1/transfer/upload (1MB chunked streaming upload)
+                // POST /api/v1/transfer/upload
+                // Remote senders must be inside a verified session; their chunks are
+                // AES-256-GCM sealed and are decrypted here before touching disk. Loopback
+                // callers may still post plaintext (local tooling and tests).
                 if (path == "/api/v1/transfer/upload" && method == "POST") {
+                    val isLocal = isTrustedLocal(clientIp)
+                    val session = getVerifiedSession(headers["x-session-id"], clientIp)
+                    val isEncrypted = headers["x-encrypted"] == "1"
+
+                    if (!isLocal && session == null) {
+                        sendUnauthorized(outputStream, "Encrypted session required. Complete the pairing handshake before uploading.")
+                        return
+                    }
+                    if (isEncrypted && session == null) {
+                        val err = """{"code":400,"error":"X-Encrypted was set but no verified session key is available"}"""
+                        sendHttpResponse(outputStream, 400, "Bad Request", "application/json", err.toByteArray(StandardCharsets.UTF_8))
+                        return
+                    }
+
                     val rawTaskId = headers["x-task-id"] ?: "task_${System.currentTimeMillis()}"
                     val taskId = rawTaskId.replace(Regex("[^a-zA-Z0-9_-]"), "").ifEmpty { "task_${System.currentTimeMillis()}" }
                     val rawFileName = headers["x-file-name"] ?: "received_file.bin"
@@ -271,16 +442,42 @@ class MobileTransferServer(
                     }
 
                     val partFile = storageHelper.getTempPartFile(taskId, fileName)
-                    val chunkBuffer = ByteArray(8192)
-                    var bytesRemaining = if (contentLength in 1..(8 * 1024 * 1024)) contentLength else (1024 * 1024)
 
-                    FileOutputStream(partFile, true).use { fos ->
-                        while (bytesRemaining > 0) {
-                            val toRead = minOf(chunkBuffer.size, bytesRemaining)
-                            val read = inputStream.read(chunkBuffer, 0, toRead)
-                            if (read == -1) break
-                            fos.write(chunkBuffer, 0, read)
-                            bytesRemaining -= read
+                    if (isEncrypted) {
+                        // Read the whole sealed packet, verify the tag, then append the plaintext.
+                        // GCM verification is all-or-nothing, so nothing is written on failure.
+                        val bodyBytes = ByteArray(if (contentLength > 0) contentLength else 0)
+                        if (bodyBytes.isNotEmpty()) {
+                            var read = 0
+                            while (read < bodyBytes.size) {
+                                val r = inputStream.read(bodyBytes, read, bodyBytes.size - read)
+                                if (r == -1) break
+                                read += r
+                            }
+                        }
+                        val plaintext = try {
+                            cryptoEngine.decryptChunk(bodyBytes, session!!.key!!, taskId, chunkIndex)
+                        } catch (e: Exception) {
+                            Log.w(tag, "Rejected encrypted chunk $chunkIndex of $taskId: ${e.message}")
+                            val err = """{"code":400,"error":"Decryption failed: ${e.message}"}"""
+                            sendHttpResponse(outputStream, 400, "Bad Request", "application/json", err.toByteArray(StandardCharsets.UTF_8))
+                            return
+                        }
+                        FileOutputStream(partFile, true).use { fos ->
+                            if (plaintext.isNotEmpty()) fos.write(plaintext)
+                        }
+                    } else {
+                        val chunkBuffer = ByteArray(8192)
+                        var bytesRemaining = if (contentLength in 1..(8 * 1024 * 1024)) contentLength else (1024 * 1024)
+
+                        FileOutputStream(partFile, true).use { fos ->
+                            while (bytesRemaining > 0) {
+                                val toRead = minOf(chunkBuffer.size, bytesRemaining)
+                                val read = inputStream.read(chunkBuffer, 0, toRead)
+                                if (read == -1) break
+                                fos.write(chunkBuffer, 0, read)
+                                bytesRemaining -= read
+                            }
                         }
                     }
 
@@ -339,6 +536,10 @@ class MobileTransferServer(
 
                 // GET /api/v1/files/list
                 if (path == "/api/v1/files/list" && method == "GET") {
+                    if (!isTrustedLocal(clientIp) && getVerifiedSession(headers["x-session-id"], clientIp) == null) {
+                        sendUnauthorized(outputStream, "Encrypted session required")
+                        return
+                    }
                     val vaultFiles = storageHelper.getVaultFiles()
                     val filesArray = JSONArray()
                     for (f in vaultFiles) {
@@ -358,6 +559,10 @@ class MobileTransferServer(
 
                 // GET /api/v1/files/download/:name
                 if (path.startsWith("/api/v1/files/download/") && method == "GET") {
+                    if (!isTrustedLocal(clientIp) && getVerifiedSession(headers["x-session-id"], clientIp) == null) {
+                        sendUnauthorized(outputStream, "Encrypted session required")
+                        return
+                    }
                     val rawName = path.removePrefix("/api/v1/files/download/")
                     val safeName = storageHelper.sanitizeFileName(try { URLDecoder.decode(rawName, "UTF-8") } catch (_: Exception) { rawName })
                     val vaultFiles = storageHelper.getVaultFiles()
@@ -446,7 +651,7 @@ class MobileTransferServer(
                 "Content-Length: ${body.size}\r\n" +
                 "Access-Control-Allow-Origin: *\r\n" +
                 "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
-                "Access-Control-Allow-Headers: Content-Type, X-Task-Id, X-Chunk-Index, X-Chunk-Count, X-File-Name, X-File-Size\r\n" +
+                "Access-Control-Allow-Headers: Content-Type, X-Task-Id, X-Chunk-Index, X-Chunk-Count, X-File-Name, X-File-Size, X-Encrypted, X-Session-Id\r\n" +
                 "Connection: close\r\n\r\n"
         out.write(header.toByteArray(StandardCharsets.UTF_8))
         if (body.isNotEmpty()) {

@@ -180,7 +180,7 @@ async function runTests() {
 
     // 5. POST /api/v1/transfer/upload with an AES-256-GCM sealed chunk (UTF-8 filename)
     const taskId = `task_e2e_${Date.now()}`;
-    const testFileName = `Graduation_Project_SafeDrop_E2E_${Date.now()}.txt`;
+    const testFileName = `SafeDrop_E2E_${Date.now()}.txt`;
     const filePayload = Buffer.from('SafeDrop Cross-Platform Secure Transfer: UTF-8 encoding, Scoped Storage & X25519 Encryption.\n', 'utf8');
     const sealedChunk = PROTO.encryptChunk(sessionKey, filePayload, taskId, 0);
 

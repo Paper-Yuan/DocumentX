@@ -12,13 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Payload encryption is now on the transfer path.** Each chunk is sealed with
   AES-256-GCM (`crypto_protocol.js`) and is verified before anything reaches disk; a
   modified tag or a chunk presented under the wrong index is rejected.
+- **Phone-to-phone transfers are encrypted end to end.** The sender negotiates a session
+  directly with the destination phone and the hub only forwards the sealed bytes, so the
+  hub never holds, unwraps, or can read the file content. The destination session id is
+  carried separately (`X-Target-Session-Id`) so the hub's own session with the sender is
+  never leaked to the receiving device.
+- **Sessions are tracked per peer**, not per app: pairing with one device no longer
+  invalidates the session with another, and trust is derived from the live session store
+  instead of a set that could claim trust after the session was gone.
 - **Pairing secrets never leave the device.** The 6-digit PIN / one-time token is used as
   HKDF input and proven with an HMAC over the derived session key, replacing the previous
   scheme that compared the PIN server-side. Both sides now verify each other's proof.
 - **Session enforcement.** Upload, download, vault listing, and device-name endpoints
-  require a verified session; only loopback callers are exempt.
-- **Pairing rate limiting.** Eight failures from one source IP block further attempts for
-  five minutes.
+  require a verified session; only loopback callers are exempt. The Android receiver
+  enforces the same rule.
+- **Pairing rate limiting** on both the hub and the Android receiver (8 failures from one
+  source IP block further attempts).
 - **Self-signed HTTPS portal** (`tls_selfsigned.js`). Browsers only expose WebCrypto in a
   secure context, so the portal is served over HTTPS with a certificate generated in pure
   Node (with IP SANs). Without it the portal refuses to pair rather than silently sending
@@ -29,11 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fixed `/health` returning HTML.** It sat outside the `/api/v1` prefix, fell through to
   the static handler, and answered 200 with `index.html`, which also fooled the Tauri
   startup probe.
-- **Fixed pairing-secret disclosure.** `/api/v1/info` previously returned the PIN and token
-  to any LAN caller, which made the pairing step decorative.
+- **Fixed pairing-secret disclosure.** `/api/v1/info` on both the hub and the Android
+  receiver previously returned the PIN and token to any LAN caller, which made the pairing
+  step decorative.
 
 ### Planned
-- Encrypt the second hop of mobile-to-mobile relay (hub to target phone is still plaintext)
 - Resumable file transfer with breakpoint continuation
 - Batch download (TAR.GZ) and QR share links with expiry
 - macOS and Linux desktop validation on real hardware

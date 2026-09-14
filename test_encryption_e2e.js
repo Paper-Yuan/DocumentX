@@ -20,6 +20,7 @@ const PROTO = require('./computer-design/desktop_hub/crypto_protocol');
 
 const HUB_PORT = 8791;
 const TLS_PORT = 8792;
+const DEST_PORT = 8793;
 const LOOPBACK = '127.0.0.1';
 const VAULT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'safedrop-vault-'));
 
@@ -29,6 +30,13 @@ const VAULT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'safedrop-vault-'));
  * phone. Loopback is used for the few checks that assert host-local trust.
  */
 let LAN_HOST = LOOPBACK;
+
+/**
+ * Address used as the relay *destination*. It must differ from the hub's own LAN address and
+ * from loopback, otherwise the hub treats the chunk as a local upload instead of a relay.
+ * Any other local IPv4 works, since the stub listener binds 0.0.0.0.
+ */
+let RELAY_DEST_HOST = null;
 
 let passed = 0;
 let failed = 0;
@@ -99,13 +107,27 @@ let HUB_PIN = null;
 
 async function main() {
   console.log('\n▶ Booting hub process...');
+
+  // Collect every local IPv4 so the relay destination can be a different address than the
+  // hub's own (the hub deliberately refuses to relay to itself).
+  const localCandidates = [];
+  for (const name of Object.keys(os.networkInterfaces())) {
+    for (const iface of os.networkInterfaces()[name] || []) {
+      if (iface.family === 'IPv4' && !iface.address.startsWith('127.')) {
+        localCandidates.push(iface.address);
+      }
+    }
+  }
+
   const hub = spawn(process.execPath, [path.join('computer-design', 'desktop_hub', 'server.js')], {
     env: {
       ...process.env,
       PORT: String(HUB_PORT),
       TLS_PORT: String(TLS_PORT),
       // Keep the test from rewriting the repository's config.json.
-      SAFEDROP_CONFIG: path.join(VAULT_DIR, 'config.json')
+      SAFEDROP_CONFIG: path.join(VAULT_DIR, 'config.json'),
+      // Permit the stub destination as a relay target (these local addresses are not RFC1918).
+      SAFEDROP_RELAY_TARGETS: localCandidates.join(',')
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -138,6 +160,16 @@ async function main() {
     if (LAN_HOST !== LOOPBACK) break;
   }
   console.log(`\n▶ Hub on ${LOOPBACK}:${HUB_PORT}; simulating a remote LAN peer from ${LAN_HOST}`);
+
+  // The relay destination must not be the hub's own address, or the hub treats the chunk as
+  // a local upload rather than a relay.
+  const hubSelfIp = json(await request('GET', '/api/v1/info', { host: LOOPBACK }))?.localIp;
+  RELAY_DEST_HOST = localCandidates.find((ip) => ip !== hubSelfIp) || null;
+  if (RELAY_DEST_HOST) {
+    console.log(`▶ Relay destination for the phone-to-phone check: ${RELAY_DEST_HOST}`);
+  } else {
+    console.log('▶ No alternate local address available; the relay section will report this.');
+  }
 
   console.log('\n▶ Section 1: pairing-secret disclosure');
   const loopInfo = json(await request('GET', '/api/v1/info', { host: LOOPBACK }));
@@ -337,7 +369,93 @@ async function main() {
     assert.ok(limited, 'expected the hub to rate limit repeated pairing failures');
   });
 
-  console.log('\n▶ Section 6: HTTPS portal (needed for browser WebCrypto)');
+  console.log('\n▶ Section 6: phone-to-phone relay (sealed bytes forwarded untouched)');
+  if (!RELAY_DEST_HOST) {
+    check('a relay destination distinct from the hub is available', () => {
+      assert.fail('no alternate local IPv4 address; cannot exercise the relay path on this host');
+    });
+  } else {
+  // The sender negotiates its own session with the destination phone; the hub holds no such
+  // key, so it must forward the sealed bytes without unwrapping them.
+  const destKeyPair = PROTO.generateKeyPair('x25519');
+  const destRawPub = PROTO.exportRawPublicKey(destKeyPair, 'x25519');
+  const senderKeyPair = PROTO.generateKeyPair('x25519');
+  const senderRawPub = PROTO.exportRawPublicKey(senderKeyPair, 'x25519');
+
+  const destSessionId = crypto.randomBytes(16).toString('hex');
+  const destPin = '246810';
+  const senderToDestKey = PROTO.deriveSessionKey(
+    PROTO.computeSharedSecret(senderKeyPair.privateKey, destRawPub, 'x25519'),
+    destSessionId, destPin
+  );
+  const destKey = PROTO.deriveSessionKey(
+    PROTO.computeSharedSecret(destKeyPair.privateKey, senderRawPub, 'x25519'),
+    destSessionId, destPin
+  );
+  check('sender and destination phone derive the same key', () => {
+    assert.ok(senderToDestKey.equals(destKey));
+  });
+
+  // A stub standing in for the destination phone, so the relay hop can be observed.
+  const received = [];
+  const destPhone = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      received.push({
+        body: Buffer.concat(chunks),
+        sessionId: req.headers['x-session-id'],
+        encrypted: req.headers['x-encrypted']
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ code: 0, status: 'chunk_received' }));
+    });
+  });
+  await new Promise((resolve) => destPhone.listen(DEST_PORT, '0.0.0.0', resolve));
+
+  const relayTaskId = `relay_${Date.now()}`;
+  const relayPlaintext = crypto.randomBytes(4096);
+  const relaySealed = PROTO.encryptChunk(senderToDestKey, relayPlaintext, relayTaskId, 0);
+
+  const relayRes = await request('POST', '/api/v1/transfer/upload', {
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-Task-Id': relayTaskId,
+      'X-File-Name': 'relayed.bin',
+      'X-Chunk-Index': '0',
+      'X-Chunk-Count': '1',
+      'X-Encrypted': '1',
+      'X-Session-Id': paired.sessionId,        // session with the hub
+      'X-Target-Session-Id': destSessionId,    // session with the destination phone
+      'X-Target-Ip': RELAY_DEST_HOST,
+      'X-Target-Port': String(DEST_PORT)
+    },
+    body: relaySealed
+  });
+
+  check('the hub accepts and forwards the relayed chunk', () => {
+    assert.strictEqual(relayRes.status, 200, `got ${relayRes.status}: ${relayRes.body}`);
+  });
+
+  check('the destination received the sealed bytes byte-for-byte', () => {
+    assert.strictEqual(received.length, 1, `expected 1 forwarded chunk, got ${received.length}`);
+    assert.ok(received[0].body.equals(relaySealed), 'forwarded bytes differ from what the sender sealed');
+  });
+
+  check('the destination can decrypt with the key it negotiated with the sender', () => {
+    const opened = PROTO.decryptChunk(destKey, received[0].body, relayTaskId, 0);
+    assert.ok(opened.equals(relayPlaintext), 'decrypted content differs from the original plaintext');
+  });
+
+  check('the destination session id is forwarded, not the hub session id', () => {
+    assert.strictEqual(received[0].sessionId, destSessionId);
+    assert.notStrictEqual(received[0].sessionId, paired.sessionId);
+  });
+
+  await new Promise((resolve) => destPhone.close(resolve));
+  }
+
+  console.log('\n▶ Section 7: HTTPS portal (needed for browser WebCrypto)');
   const tlsInfo = json(await request('GET', '/api/v1/info', { host: LOOPBACK, tls: true, port: TLS_PORT }));
   check('the hub serves /api/v1/info over HTTPS', () => {
     assert.ok(tlsInfo && tlsInfo.code === 0, 'HTTPS /info should respond');

@@ -933,7 +933,6 @@ Release date: 2024-09-14
 ### 内部文档
 
 - [SafeDrop Architecture](file:///E:/Workbox/DocumentX/README.md)
-- [Corporate Trust Design System](file:///E:/Workbox/DocumentX/computer-design/design_plan.md)
 - [Android Design Guide](file:///E:/Workbox/DocumentX/android-design/README.md)
 - [Security Audit Report](file:///E:/Workbox/DocumentX/SECURITY.md)
 

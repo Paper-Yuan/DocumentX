@@ -132,8 +132,21 @@ function saveDeviceNames() {
 // SSRF validation: only forward to valid private RFC1918 IPv4 addresses
 function isPrivateLanIp(ip) {
   if (!ip || typeof ip !== 'string') return false;
-  return /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})$/.test(ip);
+  if (/^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})$/.test(ip)) {
+    return true;
+  }
+  // Extra relay destinations for networks that do not use RFC1918 ranges (VPN overlays,
+  // lab subnets). Empty by default so the SSRF guard keeps rejecting everything else.
+  return RELAY_TARGET_ALLOWLIST.has(ip);
 }
+
+/** Optional operator-supplied relay destinations: SAFEDROP_RELAY_TARGETS=10.8.0.4,10.8.0.5 */
+const RELAY_TARGET_ALLOWLIST = new Set(
+  (process.env.SAFEDROP_RELAY_TARGETS || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+);
 
 // Path traversal and Windows reserved filename defense filter
 function sanitizeFileName(inputName) {
@@ -454,7 +467,7 @@ function handleIncomingRequest(req, res) {
   // CORS support
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Task-Id, X-Chunk-Index, X-Chunk-Count, X-File-Name, X-File-Size, X-Encrypted, X-Session-Id, X-Target-Ip, X-Target-Port, X-Target-Name');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Task-Id, X-Chunk-Index, X-Chunk-Count, X-File-Name, X-File-Size, X-Encrypted, X-Session-Id, X-Target-Session-Id, X-Target-Ip, X-Target-Port, X-Target-Name');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -846,7 +859,10 @@ function handleApi(pathname, req, res, urlObj) {
       });
     }
 
-    if (isEncrypted && !session) {
+    // A non-loopback caller must have proven a session before it may send anything. A
+    // loopback caller may send an already-encrypted payload for a relay target without
+    // holding a hub session, because in that case the key belongs to the destination.
+    if (isEncrypted && !session && !isLocal) {
       return jsonResponse(res, 400, {
         code: 400,
         error: 'X-Encrypted was set but no verified session key is available for this request'
@@ -865,85 +881,41 @@ function handleApi(pathname, req, res, urlObj) {
       delete forwardHeaders['x-target-port'];
       delete forwardHeaders['x-target-name'];
 
-      const sendToTarget = (bodyBuffer) => {
-        delete forwardHeaders['x-encrypted'];
+      // The sender holds two independent sessions: one with this hub (used for authorization
+      // above) and one with the destination phone. Only the latter is meaningful to the
+      // receiver, so swap in the target's session id before forwarding; the hub session id
+      // must not leak downstream.
+      if (forwardHeaders['x-target-session-id']) {
+        forwardHeaders['x-session-id'] = forwardHeaders['x-target-session-id'];
+      } else {
         delete forwardHeaders['x-session-id'];
-        if (bodyBuffer) {
-          forwardHeaders['content-length'] = bodyBuffer.length;
-        }
-        const targetReq = http.request({
-          hostname: targetIp,
-          port: targetPort,
-          path: '/api/v1/transfer/upload',
-          method: 'POST',
-          headers: forwardHeaders
-        }, (targetRes) => {
-          let body = '';
-          targetRes.on('data', chunk => body += chunk);
-          targetRes.on('end', () => {
-            res.writeHead(targetRes.statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(body || JSON.stringify({ code: 0, status: 'chunk_relayed_to_mobile' }));
-          });
-        });
-
-        targetReq.on('error', (err) => {
-          console.error(`[Relay Upload] Failed to forward chunk to mobile (${targetIp}:${targetPort}):`, err.message);
-          jsonResponse(res, 502, { error: `无法推送到手机端 (${targetIp}:${targetPort}): ${err.message}` });
-        });
-
-        if (bodyBuffer) {
-          targetReq.end(bodyBuffer);
-        } else {
-          req.pipe(targetReq);
-        }
-      };
-
-      if (isEncrypted) {
-        // The session key is shared with this hub, not with the receiving phone, so the
-        // ciphertext cannot simply be forwarded: decrypt here and relay the plaintext.
-        // The second hop (hub -> target phone) is therefore not encrypted yet.
-        const rawTaskId = req.headers['x-task-id'] || '';
-        const relayTaskId = rawTaskId.replace(/[^a-zA-Z0-9_\-]/g, '');
-        const relayChunkIndex = parseInt(req.headers['x-chunk-index'] || '0', 10);
-        const parts = [];
-        let received = 0;
-        let done = false;
-        const MAX_SEALED = 64 * 1024 * 1024;
-
-        req.on('data', (chunk) => {
-          if (done) return;
-          received += chunk.length;
-          if (received > MAX_SEALED) {
-            done = true;
-            jsonResponse(res, 413, { error: 'Encrypted chunk exceeds the maximum accepted size' });
-            return;
-          }
-          parts.push(chunk);
-        });
-
-        req.on('error', (e) => {
-          if (done) return;
-          done = true;
-          jsonResponse(res, 400, { error: `Upload stream error: ${e.message}` });
-        });
-
-        req.on('end', () => {
-          if (done) return;
-          done = true;
-          let plaintext;
-          try {
-            plaintext = cryptoProtocol.decryptChunk(session.key, Buffer.concat(parts), relayTaskId, relayChunkIndex);
-          } catch (e) {
-            console.warn(`[Relay Upload] Rejected chunk ${relayChunkIndex} of ${relayTaskId}: ${e.message}`);
-            jsonResponse(res, 400, { error: `Decryption failed: ${e.message}` });
-            return;
-          }
-          sendToTarget(plaintext);
-        });
-        return;
       }
+      delete forwardHeaders['x-target-session-id'];
 
-      sendToTarget(null);
+      // The chunk is sealed with the key the sender shares with the destination phone. This
+      // hub holds no such key, so the sealed bytes are forwarded untouched: the phone
+      // decrypts with the key it negotiated directly with the sender.
+      const targetReq = http.request({
+        hostname: targetIp,
+        port: targetPort,
+        path: '/api/v1/transfer/upload',
+        method: 'POST',
+        headers: forwardHeaders
+      }, (targetRes) => {
+        let body = '';
+        targetRes.on('data', chunk => body += chunk);
+        targetRes.on('end', () => {
+          res.writeHead(targetRes.statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(body || JSON.stringify({ code: 0, status: 'chunk_relayed_to_mobile' }));
+        });
+      });
+
+      targetReq.on('error', (err) => {
+        console.error(`[Relay Upload] Failed to forward chunk to mobile (${targetIp}:${targetPort}):`, err.message);
+        jsonResponse(res, 502, { error: `无法推送到手机端 (${targetIp}:${targetPort}): ${err.message}` });
+      });
+
+      req.pipe(targetReq);
       return;
     }
 

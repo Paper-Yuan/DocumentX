@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.util.Log
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.Gravity
@@ -86,7 +87,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceAdapter: DeviceAdapter
     private val discoveredDevices = mutableListOf<DiscoveredDevice>()
     private var selectedTargetDevice: DiscoveredDevice? = null
-    private val trustedPeers = mutableSetOf<String>()
+
+    /**
+     * Pairing secrets (PIN or QR token) learned from a scan or manual entry, keyed by
+     * "host:port". Needed to negotiate a direct session with a phone-to-phone target later,
+     * since the desktop hub holds no key for that peer.
+     */
+    private val pairingSecrets = mutableMapOf<String, String>()
 
     private lateinit var transferTaskAdapter: TransferTaskAdapter
     private lateinit var vaultFileAdapter: VaultFileAdapter
@@ -236,11 +243,10 @@ class MainActivity : AppCompatActivity() {
                 connectedPort = dev.port
                 prefs.edit().putString("connected_host", dev.host).apply()
 
-                if (trustedPeers.contains("${dev.host}:${dev.port}")) {
+                if (hubClient.hasSession(dev.host, dev.port)) {
                     pickFileLauncher.launch("*/*")
                 } else {
                     showPinPairingDialog(dev.host, dev.port, onPaired = {
-                        trustedPeers.add("${dev.host}:${dev.port}")
                         pickFileLauncher.launch("*/*")
                     })
                 }
@@ -1246,6 +1252,53 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Negotiate an encrypted session directly with a peer device, reusing the pairing secret
+     * from the most recent QR scan or PIN entry for that host.
+     *
+     * A phone-to-phone transfer needs a key shared with the destination, and the desktop hub
+     * has no session with that phone, so the sender must pair with the peer itself.
+     *
+     * @return true when the peer proved the same session key.
+     */
+    private suspend fun pairWithTargetDirectly(host: String, port: Int): Boolean {
+        val secret = pairingSecrets["$host:$port"]
+            ?: pairingSecrets[connectedHost.let { "$it:$connectedPort" }]
+            ?: prefs.getString("pairing_secret", null)
+            ?: return false
+
+        val pingOk = hubClient.ping(host, port)
+        if (!pingOk) return false
+
+        val keyPair = cryptoEngine.generateEphemeralKeyPair()
+        val rawPubKeyHex = cryptoEngine.bytesToHex(cryptoEngine.extractRawPublicKey(keyPair))
+        val handshake = hubClient.initHandshake(host, port, rawPubKeyHex) ?: return false
+
+        val sessionId = handshake.get("session_id")?.asString ?: return false
+        val serverPubKeyHex = handshake.get("server_public_key")?.asString ?: return false
+
+        val sessionKey = try {
+            cryptoEngine.deriveSessionKey(
+                localKeyPair = keyPair,
+                remoteRawPublicKey = cryptoEngine.hexToBytes(serverPubKeyHex),
+                sessionId = sessionId,
+                pairingSecret = secret
+            )
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Session key derivation failed for $host:$port: ${e.message}")
+            return false
+        }
+
+        val proofHex = cryptoEngine.bytesToHex(cryptoEngine.clientProof(sessionKey, sessionId))
+        val verifyResp = hubClient.verifyHandshake(host, port, sessionId, proofHex) ?: return false
+        val serverProofHex = verifyResp.get("server_proof")?.asString ?: return false
+        if (!cryptoEngine.verifyServerProof(sessionKey, sessionId, serverProofHex)) return false
+
+        hubClient.setSession(host, port, sessionId, sessionKey)
+        Log.i("MainActivity", "Direct encrypted session established with $host:$port")
+        return true
+    }
+
+    /**
      * Handle pairing result and perform handshake
      */
     private fun handlePairingResult(
@@ -1320,9 +1373,12 @@ class MainActivity : AppCompatActivity() {
             if (verifyResp != null && !serverProofHex.isNullOrEmpty() &&
                 cryptoEngine.verifyServerProof(sessionKey, sessionId, serverProofHex)) {
                 // Both sides proved the same key: the session is mutually authenticated.
-                hubClient.setSession(sessionId, sessionKey)
+                hubClient.setSession(ip, port, sessionId, sessionKey)
+                // Remember the secret so a later phone-to-phone transfer to this peer can be
+                // encrypted without asking the user to re-enter it.
+                pairingSecrets["$ip:$port"] = pairingSecret
+                prefs.edit().putString("pairing_secret", pairingSecret).apply()
                 isHubConnected = true
-                trustedPeers.add("$ip:$port")
                 binding.tvRadarStatus.text = "🟢 加密会话已建立：$ip (PIN 核验通过)"
                 Toast.makeText(this@MainActivity, "配对成功！已建立端到端加密会话", Toast.LENGTH_LONG).show()
 
@@ -1481,11 +1537,10 @@ class MainActivity : AppCompatActivity() {
             connectedPort = target.port
             prefs.edit().putString("connected_host", target.host).apply()
 
-            if (trustedPeers.contains("${target.host}:${target.port}")) {
+            if (hubClient.hasSession(target.host, target.port)) {
                 action()
             } else {
                 showPinPairingDialog(target.host, target.port, onPaired = {
-                    trustedPeers.add("${target.host}:${target.port}")
                     action()
                 })
             }
@@ -1497,11 +1552,10 @@ class MainActivity : AppCompatActivity() {
                 connectedPort = dev.port
                 prefs.edit().putString("connected_host", dev.host).apply()
 
-                if (trustedPeers.contains("${dev.host}:${dev.port}")) {
+                if (hubClient.hasSession(dev.host, dev.port)) {
                     action()
                 } else {
                     showPinPairingDialog(dev.host, dev.port, onPaired = {
-                        trustedPeers.add("${dev.host}:${dev.port}")
                         action()
                     })
                 }
@@ -1516,11 +1570,10 @@ class MainActivity : AppCompatActivity() {
                         connectedPort = dev.port
                         prefs.edit().putString("connected_host", dev.host).apply()
 
-                        if (trustedPeers.contains("${dev.host}:${dev.port}")) {
+                        if (hubClient.hasSession(dev.host, dev.port)) {
                             action()
                         } else {
                             showPinPairingDialog(dev.host, dev.port, onPaired = {
-                                trustedPeers.add("${dev.host}:${dev.port}")
                                 action()
                             })
                         }
@@ -1594,6 +1647,31 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this@MainActivity, "读取文件失败", Toast.LENGTH_SHORT).show()
                     }
                     return@launch
+                }
+
+                // The chunk must be sealed with a key the destination itself holds. When the
+                // destination is another phone the hub cannot help: it has no session with that
+                // phone, so we negotiate one directly and let the hub forward the sealed bytes.
+                if (!hubClient.hasSession(targetHost, targetPort)) {
+                    val paired = try {
+                        pairWithTargetDirectly(targetHost, targetPort)
+                    } catch (e: Exception) {
+                        Log.w("MainActivity", "Direct pairing with $targetHost:$targetPort failed: ${e.message}")
+                        false
+                    }
+                    if (!paired) {
+                        withContext(Dispatchers.Main) {
+                            transferMsg.status = "failed"
+                            channelMessageAdapter.notifyDataSetChanged()
+                            TransferForegroundService.finishTransfer(this@MainActivity, fileName)
+                            Toast.makeText(
+                                this@MainActivity,
+                                "无法与目标设备建立加密会话，请确认已扫码配对 $targetName",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        return@launch
+                    }
                 }
 
                 val chunkSize = CryptoEngine.CHUNK_SIZE

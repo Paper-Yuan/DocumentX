@@ -83,9 +83,42 @@ class CryptoEngine {
     }
 
     /**
-     * Compute the ECDH shared secret and derive the 256-bit AES session key.
+     * Compute the raw X25519 ECDH shared secret with a peer's raw public key.
+     */
+    fun computeSharedSecret(localKeyPair: KeyPair, remoteRawPublicKey: ByteArray): ByteArray {
+        val x509Header = byteArrayOf(
+            0x30.toByte(), 0x2a.toByte(), 0x30.toByte(), 0x05.toByte(),
+            0x06.toByte(), 0x03.toByte(), 0x2b.toByte(), 0x65.toByte(),
+            0x6e.toByte(), 0x03.toByte(), 0x21.toByte(), 0x00.toByte()
+        )
+        val keyFactory = KeyFactory.getInstance("X25519", "BC")
+        val remotePublicKey = keyFactory.generatePublic(X509EncodedKeySpec(x509Header + remoteRawPublicKey))
+
+        val ka = KeyAgreement.getInstance("X25519", "BC")
+        ka.init(localKeyPair.private)
+        ka.doPhase(remotePublicKey, true)
+        return ka.generateSecret()
+    }
+
+    /**
+     * Derive the 256-bit AES session key from an already-computed ECDH shared secret.
      * The pairing secret (PIN or one-time token) is only ever used locally as HKDF input;
      * it is never transmitted.
+     */
+    fun deriveSessionKey(
+        sharedSecret: ByteArray,
+        sessionId: String,
+        pairingSecret: String
+    ): SecretKey {
+        val hkdf = HKDFBytesGenerator(SHA256Digest())
+        hkdf.init(HKDFParameters(sharedSecret, deriveSalt(sessionId), deriveInfo(pairingSecret)))
+        val sessionKeyBytes = ByteArray(KEY_SIZE_BYTES)
+        hkdf.generateBytes(sessionKeyBytes, 0, KEY_SIZE_BYTES)
+        return SecretKeySpec(sessionKeyBytes, "AES")
+    }
+
+    /**
+     * Convenience overload: perform ECDH with the peer's raw public key, then derive the key.
      */
     fun deriveSessionKey(
         localKeyPair: KeyPair,
@@ -93,27 +126,11 @@ class CryptoEngine {
         sessionId: String,
         pairingSecret: String
     ): SecretKey {
-        // Reconstruct remote public key with standard X509 X25519 header: 302a300506032b656e032100 + 32B raw key
-        val x509Header = byteArrayOf(
-            0x30.toByte(), 0x2a.toByte(), 0x30.toByte(), 0x05.toByte(),
-            0x06.toByte(), 0x03.toByte(), 0x2b.toByte(), 0x65.toByte(),
-            0x6e.toByte(), 0x03.toByte(), 0x21.toByte(), 0x00.toByte()
+        return deriveSessionKey(
+            computeSharedSecret(localKeyPair, remoteRawPublicKey),
+            sessionId,
+            pairingSecret
         )
-        val fullEncodedKey = x509Header + remoteRawPublicKey
-        val keyFactory = KeyFactory.getInstance("X25519", "BC")
-        val remotePublicKey = keyFactory.generatePublic(X509EncodedKeySpec(fullEncodedKey))
-
-        val ka = KeyAgreement.getInstance("X25519", "BC")
-        ka.init(localKeyPair.private)
-        ka.doPhase(remotePublicKey, true)
-        val sharedSecret = ka.generateSecret()
-
-        val hkdf = HKDFBytesGenerator(SHA256Digest())
-        hkdf.init(HKDFParameters(sharedSecret, deriveSalt(sessionId), deriveInfo(pairingSecret)))
-        val sessionKeyBytes = ByteArray(KEY_SIZE_BYTES)
-        hkdf.generateBytes(sessionKeyBytes, 0, KEY_SIZE_BYTES)
-
-        return SecretKeySpec(sessionKeyBytes, "AES")
     }
 
     private fun hmac(key: SecretKey, message: String): ByteArray {

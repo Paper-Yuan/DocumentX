@@ -36,27 +36,33 @@ class DesktopHubClient {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    @Volatile
-    private var sessionId: String? = null
+    /**
+     * Verified sessions keyed by "host:port". A session is only valid with the peer it was
+     * negotiated with, so pairing with one device must not clobber another device's session.
+     */
+    private class PeerSession(val id: String, val key: SecretKey)
 
-    @Volatile
-    private var sessionKey: SecretKey? = null
+    private val sessions = java.util.concurrent.ConcurrentHashMap<String, PeerSession>()
 
-    /** Record the verified session so subsequent calls can be authenticated and encrypted. */
-    fun setSession(id: String, key: SecretKey) {
-        sessionId = id
-        sessionKey = key
+    private fun sessionKey(host: String, port: Int): String = "$host:$port"
+
+    /** Record the verified session so subsequent calls to this peer can be encrypted. */
+    fun setSession(host: String, port: Int, id: String, key: SecretKey) {
+        sessions[sessionKey(host, port)] = PeerSession(id, key)
     }
 
-    fun clearSession() {
-        sessionId = null
-        sessionKey = null
+    fun clearSession(host: String, port: Int) {
+        sessions.remove(sessionKey(host, port))
     }
 
-    fun hasSession(): Boolean = sessionId != null && sessionKey != null
+    fun clearAllSessions() {
+        sessions.clear()
+    }
 
-    private fun Request.Builder.withSession(): Request.Builder {
-        sessionId?.let { header("X-Session-Id", it) }
+    fun hasSession(host: String, port: Int): Boolean = sessions.containsKey(sessionKey(host, port))
+
+    private fun Request.Builder.withSession(host: String, port: Int): Request.Builder {
+        sessions[sessionKey(host, port)]?.let { header("X-Session-Id", it.id) }
         return this
     }
 
@@ -195,14 +201,14 @@ class DesktopHubClient {
         chunkData: ByteArray
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val key = sessionKey
-            if (key == null) {
-                Log.e(tag, "Refusing to upload chunk [$chunkIndex/$chunkCount]: no session key")
+            val session = sessions[sessionKey(host, port)]
+            if (session == null) {
+                Log.e(tag, "Refusing to upload chunk [$chunkIndex/$chunkCount]: no session with $host:$port")
                 return@withContext false
             }
 
             val encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20")
-            val sealedChunk = cryptoEngine.encryptChunk(chunkData, key, taskId, chunkIndex)
+            val sealedChunk = cryptoEngine.encryptChunk(chunkData, session.key, taskId, chunkIndex)
             val url = "http://$host:$port/api/v1/transfer/upload"
             val requestBody = sealedChunk.toRequestBody("application/octet-stream".toMediaType())
             val request = Request.Builder()
@@ -213,7 +219,7 @@ class DesktopHubClient {
                 .header("X-Chunk-Index", chunkIndex.toString())
                 .header("X-Chunk-Count", chunkCount.toString())
                 .header("X-Encrypted", "1")
-                .withSession()
+                .header("X-Session-Id", session.id)
                 .post(requestBody)
                 .build()
 
@@ -239,7 +245,7 @@ class DesktopHubClient {
         try {
             val encodedName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20")
             val url = "http://$host:$port/api/v1/files/download/$encodedName"
-            val request = Request.Builder().url(url).withSession().get().build()
+            val request = Request.Builder().url(url).withSession(host, port).get().build()
             val response = okHttpClient.newCall(request).execute()
             if (response.isSuccessful) response.body else null
         } catch (e: Exception) {
@@ -314,7 +320,7 @@ class DesktopHubClient {
     suspend fun fetchDeviceNames(host: String, port: Int): Map<String, String>? = withContext(Dispatchers.IO) {
         try {
             val url = "http://$host:$port/api/v1/devices/names"
-            val request = Request.Builder().url(url).withSession().get().build()
+            val request = Request.Builder().url(url).withSession(host, port).get().build()
             val response = okHttpClient.newCall(request).execute()
             if (response.isSuccessful) {
                 val body = response.body?.string()

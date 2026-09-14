@@ -7,6 +7,189 @@
 (function () {
   'use strict';
 
+  /**
+   * Browser-side mirror of computer-design/desktop_hub/crypto_protocol.js.
+   *
+   * Used when the desktop UI relays to a device that the hub holds no key for (a phone):
+   * the UI negotiates its own session with that peer, seals the chunks with the peer's key,
+   * and the hub forwards the sealed bytes untouched.
+   */
+  const SafeDropCrypto = (() => {
+    const PROTOCOL = 'safedrop-e2e-v1';
+    const NONCE_LEN = 12;
+    const enc = new TextEncoder();
+
+    let curve = 'x25519';
+
+    function toHex(buf) {
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function fromHex(hex) {
+      const out = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+      return out;
+    }
+
+    function concat(...parts) {
+      const total = parts.reduce((n, p) => n + p.length, 0);
+      const out = new Uint8Array(total);
+      let offset = 0;
+      for (const p of parts) { out.set(p, offset); offset += p.length; }
+      return out;
+    }
+
+    async function deriveSalt(sessionId) {
+      return new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(`${PROTOCOL}|salt|${sessionId}`)));
+    }
+
+    async function generateKeyPair() {
+      try {
+        const pair = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);
+        curve = 'x25519';
+        return pair;
+      } catch (_) {
+        const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+        curve = 'p-256';
+        return pair;
+      }
+    }
+
+    async function exportPublicKey(pair) {
+      return new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+    }
+
+    async function importPeerPublicKey(raw) {
+      return curve === 'x25519'
+        ? crypto.subtle.importKey('raw', raw, { name: 'X25519' }, false, [])
+        : crypto.subtle.importKey('raw', raw, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+    }
+
+    async function deriveSharedSecret(pair, serverRawPub) {
+      const serverKey = await importPeerPublicKey(serverRawPub);
+      const algorithm = curve === 'x25519'
+        ? { name: 'X25519', public: serverKey }
+        : { name: 'ECDH', public: serverKey };
+      return new Uint8Array(await crypto.subtle.deriveBits(algorithm, pair.privateKey, 256));
+    }
+
+    async function deriveSessionKeyBytes(sharedSecret, sessionId, pairingSecret) {
+      const hkdfKey = await crypto.subtle.importKey('raw', sharedSecret, 'HKDF', false, ['deriveBits']);
+      const salt = await deriveSalt(sessionId);
+      const info = enc.encode(`${PROTOCOL}|key|${pairingSecret}`);
+      const bits = await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, hkdfKey, 256);
+      return new Uint8Array(bits);
+    }
+
+    async function hmac(keyBytes, message) {
+      const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      return new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(message)));
+    }
+
+    function clientProof(keyBytes, sessionId) {
+      return hmac(keyBytes, `${PROTOCOL}|verify|${sessionId}`);
+    }
+
+    function serverProof(keyBytes, sessionId) {
+      return hmac(keyBytes, `${PROTOCOL}|server|${sessionId}`);
+    }
+
+    async function encryptChunk(keyBytes, data, taskId, chunkIndex) {
+      const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt']);
+      const nonce = crypto.getRandomValues(new Uint8Array(NONCE_LEN));
+      const aad = enc.encode(`${PROTOCOL}|chunk|${taskId}|${chunkIndex}`);
+      const sealed = new Uint8Array(await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: nonce, additionalData: aad, tagLength: 128 },
+        key,
+        data
+      ));
+      return concat(nonce, sealed);
+    }
+
+    function available() {
+      return !!(window.crypto && window.crypto.subtle);
+    }
+
+    return {
+      PROTOCOL,
+      toHex,
+      fromHex,
+      available,
+      getCurve: () => curve,
+      generateKeyPair,
+      exportPublicKey,
+      deriveSharedSecret,
+      deriveSessionKeyBytes,
+      clientProof,
+      serverProof,
+      encryptChunk
+    };
+  })();
+
+  /**
+   * Sessions with relay destinations, keyed by "host:port". The hub holds no key for a
+   * phone, so the UI must negotiate one directly before it can send encrypted chunks.
+   */
+  const peerSessions = new Map();
+
+  /**
+   * Establish (or reuse) an encrypted session with a peer device.
+   * Prompts for the peer's pairing PIN, which the peer displays on its own screen.
+   */
+  async function ensurePeerSession(dev) {
+    if (!dev || !dev.ip) return null;
+    const key = `${dev.ip}:${dev.port || 8899}`;
+    const existing = peerSessions.get(key);
+    if (existing) return existing;
+
+    if (!SafeDropCrypto.available()) {
+      showToast('当前页面无法加密：请通过 https:// 门户地址打开');
+      return null;
+    }
+
+    const secret = window.prompt(
+      `请与「${dev.name}」完成加密配对\n\n输入该设备屏幕上显示的 6 位配对码：`,
+      ''
+    );
+    if (!secret) return null;
+
+    try {
+      const pair = await SafeDropCrypto.generateKeyPair();
+      const rawPub = await SafeDropCrypto.exportPublicKey(pair);
+
+      const initRes = await fetch(`http://${dev.ip}:${dev.port || 8899}/api/v1/handshake/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_key: SafeDropCrypto.toHex(rawPub), curve: SafeDropCrypto.getCurve() })
+      });
+      if (!initRes.ok) throw new Error(`handshake/init HTTP ${initRes.status}`);
+      const initData = await initRes.json();
+
+      const shared = await SafeDropCrypto.deriveSharedSecret(pair, SafeDropCrypto.fromHex(initData.server_public_key));
+      const sessionKey = await SafeDropCrypto.deriveSessionKeyBytes(shared, initData.session_id, secret);
+
+      const proof = SafeDropCrypto.toHex(await SafeDropCrypto.clientProof(sessionKey, initData.session_id));
+      const verifyRes = await fetch(`http://${dev.ip}:${dev.port || 8899}/api/v1/handshake/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: initData.session_id, proof })
+      });
+      if (!verifyRes.ok) throw new Error('pairing rejected; check the code');
+
+      const verifyData = await verifyRes.json();
+      const expected = SafeDropCrypto.toHex(await SafeDropCrypto.serverProof(sessionKey, initData.session_id));
+      if (verifyData.server_proof !== expected) throw new Error('server proof mismatch');
+
+      const session = { id: initData.session_id, key: sessionKey };
+      peerSessions.set(key, session);
+      showToast(`已与 ${dev.name} 建立加密会话`);
+      return session;
+    } catch (err) {
+      showToast(`与 ${dev.name} 配对失败: ${err.message}`);
+      return null;
+    }
+  }
+
   // Global state
   const state = {
     currentTab: 'radarTab',
@@ -665,6 +848,20 @@
     let lastBytes = 0;
     let lastTime = Date.now();
 
+    // When relaying to a peer the hub has no key for, negotiate a session with that peer up
+    // front so every chunk can be sealed with a key the receiver actually holds.
+    let targetSession = null;
+    if (targetDev && targetDev.ip) {
+      targetSession = await ensurePeerSession(targetDev);
+      if (!targetSession) {
+        taskObj.status = 'failed';
+        taskObj.speed = '未建立加密会话';
+        renderTransfersList();
+        updateTaskBadges();
+        return;
+      }
+    }
+
     for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
       if (taskObj.status === 'cancelled') break;
 
@@ -692,6 +889,12 @@
           headers['x-target-ip'] = targetDev.ip;
           headers['x-target-port'] = (targetDev.port || 8899).toString();
           headers['x-target-name'] = encodeURIComponent(targetDev.name || 'Mobile');
+          // The hub has no key for a phone, so relayed chunks must be sealed with a key the
+          // phone itself holds. Without a session the phone will (correctly) refuse the chunk.
+          if (!targetSession) {
+            throw new Error('尚未与目标设备建立加密会话');
+          }
+          headers['x-target-session-id'] = targetSession.id;
         }
 
         // NEW: Compress chunk if enabled (client-side using CompressionStream API)
@@ -704,6 +907,18 @@
             console.warn('Compression failed, sending uncompressed:', compressionErr);
             headers['x-compressed'] = 'none';
           }
+        }
+
+        // Seal the chunk when the destination is a relay peer: whichever key the receiver
+        // holds must be the one used here.
+        if (targetSession) {
+          bodyToSend = await SafeDropCrypto.encryptChunk(
+            targetSession.key,
+            new Uint8Array(await bodyToSend.arrayBuffer()),
+            taskId,
+            chunkIdx
+          );
+          headers['x-encrypted'] = '1';
         }
 
         const res = await fetch('/api/v1/transfer/upload', {
