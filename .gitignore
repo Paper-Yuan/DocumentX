@@ -50,6 +50,10 @@ package-lock.json
 .system_generated/
 .release-notes-*.md
 
+# Generated TLS material for the local HTTPS portal (machine-specific private key)
+computer-design/desktop_hub/tls/
+computer-design/desktop_hub/temp_transfers/
+
 # OS and Editor specific
 .DS_Store
 Thumbs.db

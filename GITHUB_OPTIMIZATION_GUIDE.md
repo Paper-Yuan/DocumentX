@@ -118,7 +118,7 @@ queue, zero-dependency Node backend in a Tauri shell.
 零配置 UDP 发现、分块流式传输与传输队列，后端仅用 Node 标准库，外壳为 Tauri。
 ```
 
-> **注**：不再使用 "端到端加密 / E2E encryption / AES-256-GCM" 作为对外描述。加密模块虽已实现并有单元测试，但尚未接入实际传输链路，详见 README 的「What it does and does not protect」。
+> **注**：描述保持"设计优点 + 使用逻辑"先行，不放加密技术栈，避免变成参数堆砌。载荷加密（X25519 + AES-256-GCM）现已接入传输链路，可作为 Features 而非标题党卖点，详见 README 的「安全模型与边界」。
 
 **Website**: 留空或填写项目主页（如有）
 

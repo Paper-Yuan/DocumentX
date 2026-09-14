@@ -54,31 +54,47 @@ setTimeout(async () => {
     const currentPin = info.pin;
     const currentToken = info.token;
 
-    // Test 2.2: Handshake verification with active PIN
-    const verifyRes1 = await fetch('http://127.0.0.1:9988/api/v1/handshake/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin: currentPin })
-    });
-    const verifyData1 = await verifyRes1.json();
-    assert(verifyData1.code === 0 && verifyData1.status === 'verified', 'Verify succeeds with active PIN');
+    // Test 2.2: Handshake verification with the active PIN.
+    // The PIN is no longer sent to the hub: it is used locally as HKDF input and proven
+    // with an HMAC over the derived session key.
+    const PROTO = require('./computer-design/desktop_hub/crypto_protocol');
 
-    // Test 2.3: Handshake verification with previous PIN in 60s grace period
-    const verifyRes2 = await fetch('http://127.0.0.1:9988/api/v1/handshake/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin: currentPin })
-    });
-    const verifyData2 = await verifyRes2.json();
-    assert(verifyData2.code === 0 && verifyData2.status === 'verified', 'Verify succeeds with previous PIN within grace period');
+    async function establishSession(secret) {
+      const pair = PROTO.generateKeyPair('x25519');
+      const rawPub = PROTO.exportRawPublicKey(pair, 'x25519');
+      const initRes = await fetch('http://127.0.0.1:9988/api/v1/handshake/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_key: rawPub.toString('hex'), curve: 'x25519' })
+      });
+      const initData = await initRes.json();
+      const shared = PROTO.computeSharedSecret(pair.privateKey, Buffer.from(initData.server_public_key, 'hex'), 'x25519');
+      const key = PROTO.deriveSessionKey(shared, initData.session_id, String(secret));
+      const proof = PROTO.clientProof(key, initData.session_id).toString('hex');
+      const verifyRes = await fetch('http://127.0.0.1:9988/api/v1/handshake/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: initData.session_id, proof })
+      });
+      let verifyData = null;
+      try { verifyData = await verifyRes.json(); } catch (_) {}
+      return { status: verifyRes.status, data: verifyData, key, sessionId: initData.session_id };
+    }
 
-    // Test 2.4: Invalid PIN is rejected
-    const verifyRes3 = await fetch('http://127.0.0.1:9988/api/v1/handshake/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin: '000000' })
-    });
-    assert(verifyRes3.status === 403, 'Invalid PIN correctly rejected with 403');
+    const session1 = await establishSession(currentPin);
+    assert(session1.status === 200 && session1.data.status === 'verified', 'Verify succeeds with active PIN');
+    assert(
+      session1.data.server_proof === PROTO.serverProof(session1.key, session1.sessionId).toString('hex'),
+      'Hub returns a verifiable session proof'
+    );
+
+    // Test 2.3: The previous PIN also succeeds inside the 60s grace window.
+    const session2 = await establishSession(currentToken);
+    assert(session2.status === 200 && session2.data.status === 'verified', 'Verify succeeds with credential within grace period');
+
+    // Test 2.4: An incorrect PIN is rejected.
+    const session3 = await establishSession('000000' === String(currentPin) ? '111111' : '000000');
+    assert(session3.status === 403, 'Invalid PIN correctly rejected with 403');
 
     // Test 2.5: SSRF prevention in relay upload
     const ssrfRes = await fetch('http://127.0.0.1:9988/api/v1/transfer/upload', {

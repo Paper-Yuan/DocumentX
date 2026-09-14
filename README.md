@@ -36,13 +36,13 @@ SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有�
 
 **桌面端是 hub，其它设备是接入方。**
 
-1. **启动桌面端** — 本机同时起一个 HTTP 服务（默认 `8899`）和一个 UDP 发现服务（`8890`）。桌面 UI 与 Web 门户由这个服务直接提供。
-2. **手机 / 浏览器接入** — 桌面端显示二维码与 6 位配对码。手机扫码（或浏览器打开 `http://<局域网IP>:8899/portal`）后，用配对码完成一次握手。
-3. **之后就是直连** — 文件在设备之间通过局域网直接传输，桌面端负责落盘（可自定义保存目录）、展示进度，并在需要时把流量转发给同一网络内的其它设备。
+1. **启动桌面端** — 本机同时起一个 HTTP 服务（默认 `8899`）、一个 HTTPS 门户（默认 `8900`）和一个 UDP 发现服务（`8890`）。桌面 UI 与 Web 门户由这些服务直接提供。
+2. **手机 / 浏览器接入** — 桌面端显示二维码与 6 位配对码。手机扫码，或用浏览器打开界面给出的 `https://<局域网IP>:8900/portal`，再用配对码完成一次握手。
+3. **之后就是直连** — 文件在设备之间通过局域网直接传输（每个分块都经 AES-256-GCM 加密），桌面端负责验签与落盘（可自定义保存目录）、展示进度，并在需要时把流量转发给同一网络内的其它设备。
 
 这个模型带来的直接结果是：**没有月费、没有流量上限、断网也照常工作**，代价是它只能在同一个可互通的局域网里使用。
 
-> English: The desktop app is the hub. It serves the UI, the web portal, and the discovery service. A phone or browser joins by scanning a QR code and entering a rotating pairing code; after that, file transfers run over the local network, with the hub handling storage and display.
+> English: The desktop app is the hub. It serves the UI, the HTTPS web portal, and the discovery service. A phone or browser joins by scanning a QR code and entering a rotating pairing code; transfers are then sealed per chunk with AES-256-GCM over the local network.
 
 ---
 
@@ -52,10 +52,13 @@ SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有�
 
 - **零配置发现** — 桌面端每 3 秒向本网段定向广播地址发送 UDP beacon，手机端通过 `MulticastLock` 接收；同时过滤 Clash / TAP / TUN / vEthernet 等虚拟网卡，避免多网卡环境下出现幻影设备。
 - **无需安装的接入端** — Web 门户是服务端直出的一个页面，手机、平板、Mac、Linux、智能电视只要能开浏览器就能收发文件，不需要装任何东西。
-- **后端零依赖** — `server.js` 约 1140 行，只用 Node.js 标准库（`http`/`dgram`/`crypto`/`zlib`），没有 `node_modules`，启动快、体积小、审计面窄。
+- **后端零依赖** — 只用 Node.js 标准库（`http`/`https`/`dgram`/`crypto`/`zlib`），没有 `node_modules`，启动快、体积小、审计面窄。
+- **端到端载荷加密** — 每个分块以 AES-256-GCM 封装，随机 96 位 nonce，并把 task id 与分块序号作为 AAD 绑定，因此无法重排、无法跨文件拼接、篡改必被拒绝。
+- **配对凭据不上网** — PIN / token 只在本机作为 HKDF 输入，通过 HMAC 双向证明密钥一致，被动抓包者拿不到密钥。
 - **分块流式传输** — 上传按分块 + `.part` 临时文件拼接后原子改名，大文件不会整包读进内存；桌面端分块 4 MB，Android 端 1 MB。
 - **传输队列与并发** — 最多 3 个文件并发传输，其余进入队列，UI 上显示队列位置，单个任务失败不影响其它任务。
 - **可选的 gzip 压缩** — 对文本类、体积 ≥ 1 MB 的常见可压缩格式自动启用（客户端 `CompressionStream`，服务端 `zlib` 解压），可在设置里关闭。
+- **自签名 HTTPS 门户** — 纯 Node 生成并缓存 P-256 自签名证书（含 IP SAN），让浏览器进入安全上下文，从而能使用 WebCrypto 加密上传。
 - **桌面端原生化** — 外壳用 Tauri 2.0（Rust + WebView2），带系统托盘（显示 / 隐藏 / 退出带确认）和 3 个全局快捷键，窗口关闭后仍可在后台响应。
 - **Android 后台传输** — 前台服务（`foregroundServiceType="dataSync"`）+ WakeLock + 心跳，抵御 LMK 与厂商省电策略；首次传输会引导用户关闭电池优化。
 - **设备命名可持久** — 设备身份取自公钥的 SHA-256 指纹，自定义名称按指纹保存并跨网络同步，换 IP 或重连不会丢名字。
@@ -141,39 +144,47 @@ cd android-design/com
 
 ### Web 门户
 
-在桌面端界面找到当前局域网地址，然后在任意设备的浏览器打开：
+在桌面端界面（或二维码弹窗里的"直连网址"）找到门户地址，在任意设备的浏览器打开：
 
 ```
-http://<局域网IP>:8899/portal
+https://<局域网IP>:8900/portal
 ```
 
-输入界面上的 6 位配对码即可。
+首次访问会出现自签名证书警告，选择继续访问即可（该证书只用于传输加密，身份由配对码保证）。然后输入界面上的 6 位配对码。
+
+> 若用 `http://<局域网IP>:8899/portal` 打开，浏览器不会提供 WebCrypto，门户会直接提示"当前地址不支持加密"并拒绝配对——这是有意为之，避免在不知情的情况下走明文。
 
 ---
 
 ## 🔐 安全模型与边界
 
-SafeDrop 的定位是**可信局域网内的便捷传输**，不是抗窃听的加密通道。把边界写清楚，是为了让你知道什么时候不该用它。
+SafeDrop 的定位是**局域网内的加密传输**：载荷已加密，但配套机制仍偏"便捷优先"。把边界写清楚，是为了让你知道什么时候不该用它。
 
 ### 已提供
 
 | 机制 | 说明 |
 |:---|:---|
-| 数据不出局域网 | 传输全程在本地网络内完成，不经过云端或第三方服务器 |
-| 配对校验 | 接入方需通过 6 位 PIN 或一次性 token 完成握手，两种凭据在每次成功配对后轮换 |
-| 凭据宽限期 | 轮换后的旧凭据保留 60 秒，避免多设备连续连接时反复输入 |
-| 设备身份标识 | 以公钥的 SHA-256 指纹识别设备，换 IP 后仍可辨认；自定义名称也按指纹持久化 |
+| 载荷加密 | 每个分块以 AES-256-GCM 封装后传输，服务端验签通过才落盘；篡改或错序的分块会被直接拒绝 |
+| 会话密钥协商 | 每次连接生成临时 X25519 密钥对，经 HKDF-SHA256 派生会话密钥，具备前向保密 |
+| 配对凭据不入网 | 6 位 PIN / 一次性 token 不发送给服务端，只作为 HKDF 输入，并用 HMAC 证明双方派生出同一密钥 |
+| 双向身份确认 | 服务端返回自身证明，客户端校验通过后才认为配对成功，可发现冒充者 |
+| 配对尝试限流 | 同一来源 IP 连续 8 次配对失败后封禁 5 分钟，抑制在线穷举 |
+| 端口隔离 | 文件列表与下载等接口要求已验证会话；配对 PIN 仅对本机回环请求下发，不广播给局域网 |
 | 转发目标校验 | hub 转发前校验目标为私有网段地址，端口限定在 1024–65535 |
 | 输入处理 | 文件名做非法字符清洗；JSON 请求体上限 4 MB |
 
 ### 未提供（请勿依赖）
 
-- **载荷加密：无。** `CryptoEngine.kt` 里的 X25519 + AES-256-GCM + HKDF 实现完整并配有单元测试，但**未接入传输链路**——客户端按明文分块上传，服务端解压后直接落盘，X25519 密钥目前只用于生成设备指纹与握手标识。文件内容在局域网上是明文。
-- **传输层加密：无。** 服务以明文 HTTP 提供，同一局域网内具备抓包能力的设备可以看到传输内容。
-- **服务端访问控制：无强制校验。** 配对由客户端（桌面 UI / Web 门户）把关，服务端的上传、下载、列表等接口并不校验调用方是否已完成配对，所以它的作用是防止误连，而不是抵御有意攻击。
-- **请求频率限制：无。** 仅有 4 MB 请求体上限。
+- **桌面端自身与 hub 之间是明文 HTTP。** 本机回环通信不加密，这是速度与复杂度的取舍；如果你在同一台机器上运行不受信任的进程，它可以看到这些流量。
+- **服务端不强制校验配对。** 配对由客户端（桌面 UI / Web 门户）把关；能直接访问接口的调用方仍可提交请求，所以它防的是误连和被动窃听，不是有意攻击者的主动绕过。
+- **无身份持久化信任。** 每次连接都重新配对，不保存"已信任设备"凭据，因此每次接入都需要读取当前 PIN。
+- **Web 门户需要 HTTPS 才加密。** 浏览器只在安全上下文中暴露 WebCrypto，所以门户必须通过 `https://` 打开（见下节）。若你用 `http://` 打开门户，加密不可用，页面会直接拒绝配对而不是静默降级为明文。
 
-**使用建议**：只在你自己可控的网络里使用。不要在公共 Wi-Fi、共享办公网或任何你不信任的链路上传输敏感文件。载荷加密接通后，本节会同步更新。
+### 关于自签名证书
+
+hub 会为门户自动生成一张自签名证书（保存在 `computer-design/desktop_hub/tls/`），因此浏览器首次访问会提示证书不受信任。这是预期行为：**该证书只提供传输加密，不提供身份认证**；对端的真实身份由配对 PIN 与握手 HMAC 保证，所以即便有人做了中间人替换证书，拿不到 PIN 也无法解出会话密钥。
+
+**使用建议**：避免在公共 Wi-Fi 或不受信任的网络上使用；如需跨不可信链路传输，请等待中继/持久信任功能，或自行叠加 VPN。
 
 ---
 
@@ -186,7 +197,8 @@ SafeDrop 的定位是**可信局域网内的便捷传输**，不是抗窃听的�
 │  │  Tauri 2.0 Shell │      │ Node.js Backend    │   │
 │  │  (Rust + WebView)│◄────►│ (stdlib only)      │   │
 │  │  • System Tray   │      │ • HTTP :8899       │   │
-│  │  • Shortcuts     │      │ • UDP Beacon :8890 │   │
+│  │  • Shortcuts     │      │ • HTTPS :8900      │   │
+│  │                  │      │ • UDP Beacon :8890 │   │
 │  └──────────────────┘      └────────────────────┘   │
 │           │                          │               │
 │           │    HTML5 / CSS3 / JS     │               │
@@ -208,7 +220,7 @@ SafeDrop 的定位是**可信局域网内的便捷传输**，不是抗窃听的�
 
 ### Tech Stack
 
-**Desktop**
+**桌面**
 - Shell: Tauri 2.0（Rust + WebView2 / WebKit），`tauri-plugin-global-shortcut`
 - Backend: Node.js 18+，仅标准库，无 npm 依赖
 - UI: 原生 HTML5 + CSS3 + Vanilla JS，Canvas 绘制雷达图
@@ -216,11 +228,14 @@ SafeDrop 的定位是**可信局域网内的便捷传输**，不是抗窃听的�
 **Android**
 - Kotlin + Jetpack Compose (Material3)，minSdk 26 / targetSdk 34
 - OkHttp3 负责分块上传，CameraX 负责扫码
+- BouncyCastle 提供 X25519 与 AES-GCM
 - MediaStore 适配分区存储（Android 10+）
 - 前台服务 `dataSync` + `PowerManager.WakeLock` + 心跳协程
 
 **协议**
-- HTTP/1.1 + JSON 控制面，分块上传走 `application/octet-stream`
+- HTTP/1.1 + JSON 控制面，分块上传走 `application/octet-stream`，另开 HTTPS 监听供浏览器加密
+- AES-256-GCM 分块封装：`nonce(12) || ciphertext || tag(16)`，AAD = `safedrop-e2e-v1|chunk|<taskId>|<index>`
+- 会话密钥：ECDH 共享密钥经 HKDF-SHA256（salt 绑定会话 id，info 携带配对凭据）派生
 - UDP beacon 发现（`8890`），非 mDNS
 
 ---
@@ -232,16 +247,19 @@ DocumentX/
 ├── computer-design/
 │   ├── tauri-app/              # Tauri 2.0 外壳（托盘、全局快捷键）
 │   ├── desktop_hub/
-│   │   ├── server.js           # HTTP + UDP 后端（~1140 行，零依赖）
+│   │   ├── server.js           # HTTP/HTTPS + UDP 后端（仅标准库）
+│   │   ├── crypto_protocol.js  # 传输加密协议（ECDH/HKDF/AES-GCM/HMAC）
+│   │   ├── tls_selfsigned.js   # 纯 Node 自签名证书生成（含 DER 编码）
+│   │   ├── tls/                # 自动生成的证书与私钥（已 gitignore）
 │   │   └── public/
 │   │       ├── index.html      # 桌面端 UI
-│   │       ├── portal.html     # Web 门户
+│   │       ├── portal.html     # Web 门户（含 WebCrypto 客户端加密）
 │   │       ├── app.js          # 前端逻辑（队列、分块、压缩）
 │   │       └── style.css       # 主题系统
 │   └── installer/              # Windows 安装包构建脚本
 ├── android-design/com/app/src/main/java/com/safedrop/mobile/
 │   ├── core/
-│   │   ├── crypto/CryptoEngine.kt        # 加解密实现（暂未接入传输链路）
+│   │   ├── crypto/CryptoEngine.kt        # 加解密实现（已接入传输链路）
 │   │   ├── network/                      # 发现、HTTP 客户端
 │   │   ├── cache/DeviceNameCache.kt      # 指纹 → 名称持久化
 │   │   └── storage/ScopedStorageHelper.kt
@@ -264,14 +282,18 @@ DocumentX/
 ### ✅ v1.2.0 — Throughput & UX（当前最新）
 并发传输队列（最多 3 个）、文本文件 gzip 压缩、指纹持久化设备命名、Android Material 3 触摸目标合规。
 
+### ✅ 传输加密（本次）
+接通 X25519 + AES-256-GCM 载荷加密，配对凭据改为 HMAC 证明而不上网，新增配对限流、服务端会话强制校验、自签名 HTTPS 门户，并修复了原先确定性 nonce 的缺陷。
+
 ### 🔜 Next
-- **接通加密链路** — 让已有的 X25519 + AES-256-GCM 模块真正作用于传输内容
 - **断点续传** — 传输进度已持久化到 `temp_transfers/progress.json`，具备继续实现的基础
 - **批量下载**（TAR.GZ 打包）与 **二维码分享链接**（带时效）
+- **手机 → 手机中继加密** — 目前第二跳（hub → 目标手机）仍为明文转发
 - macOS / Linux 实机验证
 
 ### 🔮 Later
-- 可选的自建中继服务（跨网络传输，保持端到端加密）
+- 持久化信任设备身份，避免每次重新配对
+- 可选的自建中继服务（跨网络传输）
 - 访问控制与审计日志
 
 ---
@@ -279,6 +301,9 @@ DocumentX/
 ## 🧪 Testing
 
 ```bash
+# 传输加密（配对、加解密、篡改/重排拒绝、限流、HTTPS 门户）
+node test_encryption_e2e.js
+
 # 后端与安全相关
 node test_qr_and_security.js
 node test_multi_device_and_portal.js
@@ -289,7 +314,7 @@ node test_scrollbar_and_copy_features.js
 node test_new_chat_and_layout_features.js
 ```
 
-Android 侧包含加密模块单元测试：`android-design/com/app/src/test/java/com/safedrop/mobile/CryptoEngineTest.kt`。
+Android 侧加密单元测试：`android-design/com/app/src/test/java/com/safedrop/mobile/CryptoEngineTest.kt`，覆盖密钥协商、随机 nonce、篡改拒绝与 AAD 绑定。
 
 ---
 

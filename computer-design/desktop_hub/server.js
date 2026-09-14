@@ -15,13 +15,27 @@ const crypto = require('crypto');
 const dgram = require('dgram');
 const zlib = require('zlib');
 const { execFile, spawn } = require('child_process');
+const https = require('https');
+const cryptoProtocol = require('./crypto_protocol');
+const tlsSelfSigned = require('./tls_selfsigned');
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8899;
 const UDP_PORT = 8890;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const CONFIG_FILE = path.join(__dirname, 'config.json');
+const CONFIG_FILE = process.env.SAFEDROP_CONFIG
+  ? path.resolve(process.env.SAFEDROP_CONFIG)
+  : path.join(__dirname, 'config.json');
 const TEMP_DIR = path.join(__dirname, 'temp_transfers');
 const PROGRESS_FILE = path.join(TEMP_DIR, 'progress.json');
+
+/**
+ * Browsers only expose WebCrypto in a secure context, and plain http:// on a LAN address is
+ * not one. The portal therefore needs HTTPS, otherwise the browser cannot encrypt uploads
+ * at all. Set SAFEDROP_TLS=off to skip the listener, in which case the portal shows a
+ * warning and falls back to plaintext transport rather than failing outright.
+ */
+const TLS_ENABLED = process.env.SAFEDROP_TLS !== 'off';
+const TLS_PORT = process.env.TLS_PORT ? parseInt(process.env.TLS_PORT) : PORT + 1;
 
 // Discover all valid local IPv4 LAN addresses, filtering virtual / TUN adapters
 function getAllLocalIps() {
@@ -174,8 +188,98 @@ let prevPinTime = 0;
 
 // Online devices cache with last-seen timestamps
 const onlineDevices = new Map();
-// Authenticated peers whitelist (allows multiple phones to stay authorized simultaneously)
-const authenticatedPeers = new Map();
+
+// Ephemeral E2E sessions created by the handshake. Session keys live in memory only.
+const e2eSessions = new Map();
+const SESSION_TTL_MS = 10 * 60 * 1000;
+
+// Pairing attempts are rate limited per source IP to bound online guessing of the PIN.
+const pairingAttempts = new Map();
+const PAIRING_MAX_FAILURES = 8;
+const PAIRING_WINDOW_MS = 5 * 60 * 1000;
+const PAIRING_BLOCK_MS = 5 * 60 * 1000;
+
+const sessionGcTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of e2eSessions.entries()) {
+    if (now - session.createdAt > SESSION_TTL_MS) e2eSessions.delete(id);
+  }
+  for (const [ip, attempt] of pairingAttempts.entries()) {
+    const settled = (!attempt.blockedUntil || now > attempt.blockedUntil);
+    if (now - attempt.windowStart > PAIRING_WINDOW_MS && settled) pairingAttempts.delete(ip);
+  }
+}, 60 * 1000);
+if (sessionGcTimer.unref) sessionGcTimer.unref();
+
+/**
+ * Only loopback traffic is trusted. A TCP source address cannot be spoofed, so loopback
+ * means the request really came from this machine, where the user already has direct
+ * access to the vault and the pairing PIN. The desktop UI is served from localhost, so it
+ * qualifies; anything arriving over the LAN must complete the encrypted handshake even if
+ * it originates from this same host's LAN address.
+ */
+function isTrustedLocal(ip) {
+  return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip === '::ffff:127.0.0.1';
+}
+
+function clientIpOf(req) {
+  return req.socket.remoteAddress?.replace(/^.*:/, '') || '127.0.0.1';
+}
+
+/** Look up a verified session, bound to the requesting IP so an id cannot be replayed. */
+function getVerifiedSession(req) {
+  const sessionId = req.headers['x-session-id'];
+  if (!sessionId || typeof sessionId !== 'string') return null;
+  const session = e2eSessions.get(sessionId);
+  if (!session || !session.verified || !session.key) return null;
+  if (session.clientIp !== clientIpOf(req)) return null;
+  session.lastSeen = Date.now();
+  return session;
+}
+
+/**
+ * Guard for endpoints that expose or mutate user data. Returns true when the request may
+ * proceed; otherwise it has already written the error response.
+ */
+function ensureAuthorized(req, res) {
+  const ip = clientIpOf(req);
+  if (isTrustedLocal(ip)) return true;
+  if (getVerifiedSession(req)) return true;
+  jsonResponse(res, 401, {
+    code: 401,
+    error: 'Encrypted session required. Complete the pairing handshake before using this endpoint.'
+  });
+  return false;
+}
+
+function pairingRateLimited(ip) {
+  const attempt = pairingAttempts.get(ip);
+  if (!attempt) return 0;
+  const now = Date.now();
+  if (attempt.blockedUntil && now < attempt.blockedUntil) {
+    return Math.ceil((attempt.blockedUntil - now) / 1000);
+  }
+  return 0;
+}
+
+function notePairingFailure(ip) {
+  const now = Date.now();
+  let attempt = pairingAttempts.get(ip);
+  if (!attempt || now - attempt.windowStart > PAIRING_WINDOW_MS) {
+    attempt = { windowStart: now, failures: 0, blockedUntil: 0 };
+  }
+  attempt.failures += 1;
+  if (attempt.failures >= PAIRING_MAX_FAILURES) {
+    attempt.blockedUntil = now + PAIRING_BLOCK_MS;
+    attempt.failures = 0;
+    attempt.windowStart = now;
+  }
+  pairingAttempts.set(ip, attempt);
+}
+
+function clearPairingFailures(ip) {
+  pairingAttempts.delete(ip);
+}
 
 // Register host desktop hub device
 const hostDevice = {
@@ -340,11 +444,17 @@ const MIME_TYPES = {
 };
 
 // Create HTTP server
-const server = http.createServer((req, res) => {
+const server = http.createServer(handleIncomingRequest);
+
+/**
+ * HTTP and HTTPS share one request handler, so behaviour cannot drift between them.
+ * `req.socket.encrypted` distinguishes the two when a response needs to know.
+ */
+function handleIncomingRequest(req, res) {
   // CORS support
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Task-Id, X-Chunk-Index, X-Chunk-Count, X-File-Name, X-File-Size, X-Encrypted, X-Target-Ip, X-Target-Port, X-Target-Name');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Task-Id, X-Chunk-Index, X-Chunk-Count, X-File-Name, X-File-Size, X-Encrypted, X-Session-Id, X-Target-Ip, X-Target-Port, X-Target-Name');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -372,6 +482,13 @@ const server = http.createServer((req, res) => {
   }
 
   // API router
+  if (pathname === '/health') {
+    // Kept outside the /api/v1 prefix, so it must be routed explicitly: otherwise it falls
+    // through to the static handler and returns index.html instead of a health payload.
+    jsonResponse(res, 200, { status: 'ok', ready: true });
+    return;
+  }
+
   if (pathname.startsWith('/api/v1/')) {
     handleApi(pathname, req, res, urlObj);
     return;
@@ -379,31 +496,43 @@ const server = http.createServer((req, res) => {
 
   // Static files server
   handleStatic(pathname, res, req, urlObj);
-});
+}
 
 // Handle API requests
 function handleApi(pathname, req, res, urlObj) {
   const clientIp = req.socket.remoteAddress?.replace(/^.*:/, '') || '127.0.0.1';
 
   // 1. System info and QR pairing payload
+  // Pairing secrets are disclosed only to callers on this machine. Remote devices must
+  // obtain them out of band (reading the screen or scanning the QR code), which is exactly
+  // what gives the pairing step its value. Serving them to any LAN caller would make the
+  // handshake ceremony pointless.
   if (pathname === '/api/v1/info' && req.method === 'GET') {
     LOCAL_IP = getLocalIp();
     hostDevice.ip = LOCAL_IP;
-    const qrUri = `safedrop://pair?ip=${LOCAL_IP}&port=${PORT}&fp=${hostFingerprint}&token=${currentOneTimeToken}&pin=${currentPin}`;
-    const webUrl = `http://${LOCAL_IP}:${PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`;
-    jsonResponse(res, 200, {
+    const trusted = isTrustedLocal(clientIp);
+    const payload = {
       code: 0,
       host: hostDevice,
       localIp: LOCAL_IP,
       availableIps: getAllLocalIps(),
       port: PORT,
+      tlsPort: TLS_ENABLED ? TLS_PORT : null,
       fingerprint: hostFingerprint,
-      pin: currentPin,
-      token: currentOneTimeToken,
-      qrUri: qrUri,
-      webUrl: webUrl,
-      downloadDir: DOWNLOAD_DIR,
-    });
+      pinRequired: true,
+      secretsDisclosed: trusted
+    };
+    if (trusted) {
+      payload.pin = currentPin;
+      payload.token = currentOneTimeToken;
+      payload.qrUri = `safedrop://pair?ip=${LOCAL_IP}&port=${PORT}&fp=${hostFingerprint}&token=${currentOneTimeToken}&pin=${currentPin}`;
+      // Point at HTTPS when available: it is the only origin where the browser can encrypt.
+      payload.webUrl = TLS_ENABLED
+        ? `https://${LOCAL_IP}:${TLS_PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`
+        : `http://${LOCAL_IP}:${PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`;
+      payload.downloadDir = DOWNLOAD_DIR;
+    }
+    jsonResponse(res, 200, payload);
     return;
   }
 
@@ -420,15 +549,6 @@ function handleApi(pathname, req, res, urlObj) {
       port: PORT,
       version: '1.0.1',
       timestamp: Date.now()
-    });
-    return;
-  }
-
-  // 2.1 Lightweight health check endpoint for fast startup
-  if (pathname === '/health' && req.method === 'GET') {
-    jsonResponse(res, 200, {
-      status: 'ok',
-      ready: true
     });
     return;
   }
@@ -474,6 +594,7 @@ function handleApi(pathname, req, res, urlObj) {
 
   // 4.1 GET /api/v1/devices/names - Get all device custom names
   if (pathname === '/api/v1/devices/names' && req.method === 'GET') {
+    if (!ensureAuthorized(req, res)) return;
     jsonResponse(res, 200, { 
       code: 0, 
       deviceNames: DEVICE_NAMES 
@@ -483,6 +604,7 @@ function handleApi(pathname, req, res, urlObj) {
 
   // 4.2 PUT /api/v1/devices/names/:fingerprint - Set custom name for a device
   if (pathname.startsWith('/api/v1/devices/names/') && req.method === 'PUT') {
+    if (!ensureAuthorized(req, res)) return;
     const fingerprint = pathname.replace('/api/v1/devices/names/', '');
     if (!fingerprint || fingerprint.length < 8) {
       return jsonResponse(res, 400, { error: 'Invalid fingerprint' });
@@ -547,15 +669,54 @@ function handleApi(pathname, req, res, urlObj) {
   }
 
   // 5. Handshake initiation POST /api/v1/handshake/init
+  // The client sends an ephemeral public key; the hub answers with its own ephemeral key and
+  // keeps the ECDH shared secret for this session only.
   if (pathname === '/api/v1/handshake/init' && req.method === 'POST') {
     readJsonBody(req, (err, body) => {
       if (err || !body) return jsonResponse(res, 400, { error: 'Invalid JSON body' });
-      const clientPubKeyHex = body.public_key;
-      const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+      let rawClientKey;
+      try {
+        rawClientKey = Buffer.from(String(body.public_key || ''), 'hex');
+      } catch (_) {
+        return jsonResponse(res, 400, { error: 'public_key must be a hex string' });
+      }
+
+      let curve;
+      try {
+        curve = body.curve ? String(body.curve) : cryptoProtocol.curveFromRawLength(rawClientKey.length);
+        if (!cryptoProtocol.CURVES[curve]) throw new Error(`unsupported curve: ${curve}`);
+      } catch (e) {
+        return jsonResponse(res, 400, { error: `Unsupported key material: ${e.message}` });
+      }
+
+      let serverPubRaw;
+      let sharedSecret;
+      try {
+        const keyPair = cryptoProtocol.generateKeyPair(curve);
+        serverPubRaw = cryptoProtocol.exportRawPublicKey(keyPair, curve);
+        sharedSecret = cryptoProtocol.computeSharedSecret(keyPair.privateKey, rawClientKey, curve);
+      } catch (e) {
+        return jsonResponse(res, 400, { error: `Key agreement failed: ${e.message}` });
+      }
+
+      const sessionId = crypto.randomBytes(16).toString('hex');
+      e2eSessions.set(sessionId, {
+        curve,
+        sharedSecret,
+        key: null,
+        verified: false,
+        clientIp,
+        createdAt: Date.now(),
+        lastSeen: Date.now()
+      });
+
       jsonResponse(res, 200, {
         code: 0,
+        protocol: cryptoProtocol.PROTOCOL,
         session_id: sessionId,
-        server_public_key: hostPubRaw.toString('hex'),
+        curve,
+        server_public_key: serverPubRaw.toString('hex'),
         pin_required: true,
         fingerprint: hostFingerprint
       });
@@ -563,49 +724,96 @@ function handleApi(pathname, req, res, urlObj) {
     return;
   }
 
-  // 6. Handshake credential verification POST /api/v1/handshake/verify
+  // 6. Handshake proof verification POST /api/v1/handshake/verify
+  // The pairing secret never crosses the wire. Both sides derive the session key from the
+  // ECDH secret plus the pairing secret, and the client proves it derived the same key by
+  // sending an HMAC over the session id.
   if (pathname === '/api/v1/handshake/verify' && req.method === 'POST') {
+    const blockedFor = pairingRateLimited(clientIp);
+    if (blockedFor > 0) {
+      return jsonResponse(res, 429, {
+        code: 429,
+        error: `Too many pairing attempts. Try again in ${blockedFor}s.`
+      });
+    }
+
     readJsonBody(req, (err, body) => {
       if (err || !body) return jsonResponse(res, 400, { error: 'Invalid JSON body' });
-      const pin = body.pin;
-      const token = body.token;
-      const now = Date.now();
-      const isValid = (pin && pin === currentPin) ||
-                      (token && token === currentOneTimeToken) ||
-                      (prevPin && pin && pin === prevPin && (now - prevPinTime < 60000)) ||
-                      (prevToken && token && token === prevToken && (now - prevPinTime < 60000));
-      if (isValid) {
-        // Record client in authenticatedPeers whitelist to keep multiple devices connected
-        authenticatedPeers.set(clientIp, {
-          ip: clientIp,
-          fingerprint: body.fingerprint || 'PEER-VERIFIED',
-          verifiedAt: now,
-          lastSeen: now
-        });
-        // Move current credentials to grace window
-        prevPin = currentPin;
-        prevToken = currentOneTimeToken;
-        prevPinTime = now;
-        // Refresh dynamic credentials for subsequent sessions
-        currentPin = String(Math.floor(100000 + Math.random() * 900000));
-        currentOneTimeToken = crypto.randomBytes(6).toString('hex');
-        jsonResponse(res, 200, { code: 0, status: 'verified', message: 'Trust established successfully' });
-      } else {
-        jsonResponse(res, 403, { code: 403, error: 'PIN or token verification failed' });
+
+      const sessionId = String(body.session_id || '');
+      const session = e2eSessions.get(sessionId);
+      if (!session || session.clientIp !== clientIp) {
+        notePairingFailure(clientIp);
+        return jsonResponse(res, 403, { code: 403, error: 'Unknown or expired session' });
       }
+
+      const now = Date.now();
+      const candidates = [currentPin, currentOneTimeToken];
+      if (prevPin && now - prevPinTime < 60000) candidates.push(prevPin);
+      if (prevToken && now - prevPinTime < 60000) candidates.push(prevToken);
+
+      let matchedKey = null;
+      for (const secret of candidates) {
+        if (!secret) continue;
+        let candidateKey;
+        try {
+          candidateKey = cryptoProtocol.deriveSessionKey(session.sharedSecret, sessionId, String(secret));
+        } catch (_) {
+          continue;
+        }
+        if (cryptoProtocol.verifyClientProof(candidateKey, sessionId, body.proof)) {
+          matchedKey = candidateKey;
+          break;
+        }
+      }
+
+      if (!matchedKey) {
+        notePairingFailure(clientIp);
+        return jsonResponse(res, 403, { code: 403, error: 'Pairing proof verification failed' });
+      }
+
+      session.key = matchedKey;
+      session.verified = true;
+      session.lastSeen = now;
+      clearPairingFailures(clientIp);
+
+      // Move current credentials into the grace window, then rotate them.
+      prevPin = currentPin;
+      prevToken = currentOneTimeToken;
+      prevPinTime = now;
+      currentPin = String(Math.floor(100000 + Math.random() * 900000));
+      currentOneTimeToken = crypto.randomBytes(6).toString('hex');
+
+      jsonResponse(res, 200, {
+        code: 0,
+        status: 'verified',
+        session_id: sessionId,
+        server_proof: cryptoProtocol.serverProof(matchedKey, sessionId).toString('hex'),
+        message: 'Encrypted session established'
+      });
     });
     return;
   }
 
   // 6.1 Refresh pairing PIN and one-time token POST /api/v1/pin/refresh
   if (pathname === '/api/v1/pin/refresh' && req.method === 'POST') {
+    // Rotating the pairing secret is a local administrative action: the new value is
+    // displayed on this machine's screen, so only this machine may trigger or read it.
+    if (!isTrustedLocal(clientIp)) {
+      return jsonResponse(res, 403, {
+        code: 403,
+        error: 'Pairing credentials can only be refreshed from the desktop hub itself'
+      });
+    }
     LOCAL_IP = getLocalIp();
     hostDevice.ip = LOCAL_IP;
     currentPin = String(Math.floor(100000 + Math.random() * 900000));
     currentOneTimeToken = crypto.randomBytes(6).toString('hex');
     const qrUri = `safedrop://pair?ip=${LOCAL_IP}&port=${PORT}&fp=${hostFingerprint}&token=${currentOneTimeToken}&pin=${currentPin}`;
-    const webUrl = `http://${LOCAL_IP}:${PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`;
-    console.log(`[SafeDrop] Dynamic pairing credentials refreshed: PIN=${currentPin}, Token=${currentOneTimeToken}`);
+    const webUrl = TLS_ENABLED
+      ? `https://${LOCAL_IP}:${TLS_PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`
+      : `http://${LOCAL_IP}:${PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`;
+    console.log(`[SafeDrop] Dynamic pairing credentials refreshed (PIN=${currentPin})`);
     jsonResponse(res, 200, {
       code: 0,
       pin: currentPin,
@@ -620,12 +828,32 @@ function handleApi(pathname, req, res, urlObj) {
     return;
   }
 
-  // 7. Streaming chunk upload POST /api/v1/transfer/upload (NEW: with compression support)
+  // 7. Streaming chunk upload POST /api/v1/transfer/upload
+  // Remote senders must be inside a verified session; their chunks are AES-256-GCM sealed
+  // and are decrypted here before touching disk. Loopback callers may still post plaintext
+  // (used by local tooling and tests).
   if (pathname === '/api/v1/transfer/upload' && req.method === 'POST') {
     const targetIp = req.headers['x-target-ip'];
     const targetPort = parseInt(req.headers['x-target-port'] || '8899', 10);
+    const isLocal = isTrustedLocal(clientIp);
+    const session = getVerifiedSession(req);
+    const isEncrypted = req.headers['x-encrypted'] === '1';
 
-    // If target device is a remote mobile device, pipe directly to mobile device!
+    if (!isLocal && !session) {
+      return jsonResponse(res, 401, {
+        code: 401,
+        error: 'Encrypted session required. Complete the pairing handshake before uploading.'
+      });
+    }
+
+    if (isEncrypted && !session) {
+      return jsonResponse(res, 400, {
+        code: 400,
+        error: 'X-Encrypted was set but no verified session key is available for this request'
+      });
+    }
+
+    // If target device is a remote mobile device, forward the chunk to it.
     if (targetIp && targetIp !== '127.0.0.1' && targetIp !== LOCAL_IP) {
       if (!isPrivateLanIp(targetIp) || isNaN(targetPort) || targetPort < 1024 || targetPort > 65535) {
         return jsonResponse(res, 400, { error: 'Invalid or restricted relay target IP/port' });
@@ -637,27 +865,85 @@ function handleApi(pathname, req, res, urlObj) {
       delete forwardHeaders['x-target-port'];
       delete forwardHeaders['x-target-name'];
 
-      const targetReq = http.request({
-        hostname: targetIp,
-        port: targetPort,
-        path: '/api/v1/transfer/upload',
-        method: 'POST',
-        headers: forwardHeaders
-      }, (targetRes) => {
-        let body = '';
-        targetRes.on('data', chunk => body += chunk);
-        targetRes.on('end', () => {
-          res.writeHead(targetRes.statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(body || JSON.stringify({ code: 0, status: 'chunk_relayed_to_mobile' }));
+      const sendToTarget = (bodyBuffer) => {
+        delete forwardHeaders['x-encrypted'];
+        delete forwardHeaders['x-session-id'];
+        if (bodyBuffer) {
+          forwardHeaders['content-length'] = bodyBuffer.length;
+        }
+        const targetReq = http.request({
+          hostname: targetIp,
+          port: targetPort,
+          path: '/api/v1/transfer/upload',
+          method: 'POST',
+          headers: forwardHeaders
+        }, (targetRes) => {
+          let body = '';
+          targetRes.on('data', chunk => body += chunk);
+          targetRes.on('end', () => {
+            res.writeHead(targetRes.statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(body || JSON.stringify({ code: 0, status: 'chunk_relayed_to_mobile' }));
+          });
         });
-      });
 
-      targetReq.on('error', (err) => {
-        console.error(`[Relay Upload] Failed to forward chunk to mobile (${targetIp}:${targetPort}):`, err.message);
-        jsonResponse(res, 502, { error: `无法推送到手机端 (${targetIp}:${targetPort}): ${err.message}` });
-      });
+        targetReq.on('error', (err) => {
+          console.error(`[Relay Upload] Failed to forward chunk to mobile (${targetIp}:${targetPort}):`, err.message);
+          jsonResponse(res, 502, { error: `无法推送到手机端 (${targetIp}:${targetPort}): ${err.message}` });
+        });
 
-      req.pipe(targetReq);
+        if (bodyBuffer) {
+          targetReq.end(bodyBuffer);
+        } else {
+          req.pipe(targetReq);
+        }
+      };
+
+      if (isEncrypted) {
+        // The session key is shared with this hub, not with the receiving phone, so the
+        // ciphertext cannot simply be forwarded: decrypt here and relay the plaintext.
+        // The second hop (hub -> target phone) is therefore not encrypted yet.
+        const rawTaskId = req.headers['x-task-id'] || '';
+        const relayTaskId = rawTaskId.replace(/[^a-zA-Z0-9_\-]/g, '');
+        const relayChunkIndex = parseInt(req.headers['x-chunk-index'] || '0', 10);
+        const parts = [];
+        let received = 0;
+        let done = false;
+        const MAX_SEALED = 64 * 1024 * 1024;
+
+        req.on('data', (chunk) => {
+          if (done) return;
+          received += chunk.length;
+          if (received > MAX_SEALED) {
+            done = true;
+            jsonResponse(res, 413, { error: 'Encrypted chunk exceeds the maximum accepted size' });
+            return;
+          }
+          parts.push(chunk);
+        });
+
+        req.on('error', (e) => {
+          if (done) return;
+          done = true;
+          jsonResponse(res, 400, { error: `Upload stream error: ${e.message}` });
+        });
+
+        req.on('end', () => {
+          if (done) return;
+          done = true;
+          let plaintext;
+          try {
+            plaintext = cryptoProtocol.decryptChunk(session.key, Buffer.concat(parts), relayTaskId, relayChunkIndex);
+          } catch (e) {
+            console.warn(`[Relay Upload] Rejected chunk ${relayChunkIndex} of ${relayTaskId}: ${e.message}`);
+            jsonResponse(res, 400, { error: `Decryption failed: ${e.message}` });
+            return;
+          }
+          sendToTarget(plaintext);
+        });
+        return;
+      }
+
+      sendToTarget(null);
       return;
     }
 
@@ -698,15 +984,86 @@ function handleApi(pathname, req, res, urlObj) {
     const isCompressed = req.headers['x-compressed'] === 'gzip';
 
     const partPath = path.join(DOWNLOAD_DIR, `.${taskId}_${safeName}.part`);
-
-    // NEW: Create decompression pipeline if compressed
     const writeStream = fs.createWriteStream(partPath, { flags: 'a' });
-    
+
+    if (isEncrypted) {
+      // Read the whole sealed packet, verify the tag, then append the plaintext. GCM
+      // verification is all-or-nothing, so nothing is written until the tag checks out.
+      const packets = [];
+      let received = 0;
+      const MAX_SEALED = 64 * 1024 * 1024; // generous ceiling for a single encrypted chunk
+      let aborted = false;
+
+      const fail = (status, message) => {
+        if (aborted) return;
+        aborted = true;
+        writeStream.destroy();
+        jsonResponse(res, status, { error: message });
+      };
+
+      req.on('data', (chunk) => {
+        if (aborted) return;
+        received += chunk.length;
+        if (received > MAX_SEALED) {
+          fail(413, 'Encrypted chunk exceeds the maximum accepted size');
+          return;
+        }
+        packets.push(chunk);
+      });
+
+      req.on('error', (e) => fail(400, `Upload stream error: ${e.message}`));
+
+      req.on('end', () => {
+        if (aborted) return;
+
+        let plaintext;
+        try {
+          plaintext = cryptoProtocol.decryptChunk(session.key, Buffer.concat(packets), taskId, chunkIndex);
+        } catch (e) {
+          console.warn(`[Upload] Rejected chunk ${chunkIndex} of ${taskId}: ${e.message}`);
+          fail(400, `Decryption failed: ${e.message}`);
+          return;
+        }
+
+        // Optional gzip applies to the plaintext, after decryption.
+        let payload = plaintext;
+        if (isCompressed) {
+          try {
+            payload = zlib.gunzipSync(plaintext);
+          } catch (e) {
+            console.error('[Upload] Decompression error:', e.message);
+            fail(400, `Decompression failed: ${e.message}`);
+            return;
+          }
+        }
+
+        if (payload.length > 0) {
+          writeStream.write(payload);
+        }
+        writeStream.end();
+      });
+
+      writeStream.on('error', (err) => {
+        if (aborted) return;
+        aborted = true;
+        console.error('[Upload] Write error:', err);
+        jsonResponse(res, 500, { error: err.message });
+      });
+
+      writeStream.on('finish', () => {
+        if (aborted) return;
+        finalizeUpload();
+      });
+
+      return;
+    }
+
+    // Plaintext path (loopback only, enforced above).
     let dataStream = req;
     if (isCompressed) {
       const gunzip = zlib.createGunzip();
       dataStream = req.pipe(gunzip);
-      
+
       gunzip.on('error', (err) => {
         console.error('[Upload] Decompression error:', err);
         writeStream.destroy();
@@ -717,6 +1074,11 @@ function handleApi(pathname, req, res, urlObj) {
     dataStream.pipe(writeStream);
 
     writeStream.on('finish', () => {
+      finalizeUpload();
+    });
+
+    // Shared completion handler for both the encrypted and plaintext paths.
+    function finalizeUpload() {
       // Check if all chunks received
       if (chunkIndex + 1 >= totalChunks) {
         const finalPath = resolveUniqueFilePath(safeName);
@@ -736,7 +1098,7 @@ function handleApi(pathname, req, res, urlObj) {
               compressed: isCompressed,
               time: new Date().toLocaleTimeString()
             });
-            console.log(`[SafeDrop] File successfully saved to vault: ${finalPath}${isCompressed ? ' (decompressed)' : ''}`);
+            console.log(`[SafeDrop] File successfully saved to vault: ${finalPath}${isCompressed ? ' (decompressed)' : ''}${isEncrypted ? ' (decrypted)' : ''}`);
           }
         });
       }
@@ -745,9 +1107,10 @@ function handleApi(pathname, req, res, urlObj) {
         chunk_index: chunkIndex,
         total_chunks: totalChunks,
         status: chunkIndex + 1 >= totalChunks ? 'completed' : 'chunk_received',
-        compressed: isCompressed
+        compressed: isCompressed,
+        encrypted: isEncrypted
       });
-    });
+    }
 
     writeStream.on('error', (err) => {
       console.error('[Upload] Write error:', err);
@@ -836,6 +1199,7 @@ function handleApi(pathname, req, res, urlObj) {
 
   // 8. Transfer history & file vault listing GET /api/v1/files/list
   if (pathname === '/api/v1/files/list' && req.method === 'GET') {
+    if (!ensureAuthorized(req, res)) return;
     fs.readdir(DOWNLOAD_DIR, (err, files) => {
       if (err) return jsonResponse(res, 500, { error: err.message });
       const list = [];
@@ -864,6 +1228,7 @@ function handleApi(pathname, req, res, urlObj) {
 
   // 9. File download GET /api/v1/files/download/:name
   if (pathname.startsWith('/api/v1/files/download/')) {
+    if (!ensureAuthorized(req, res)) return;
     const rawName = decodeURIComponent(pathname.replace('/api/v1/files/download/', ''));
     const safeName = sanitizeFileName(rawName);
     const targetFile = path.join(DOWNLOAD_DIR, safeName);
@@ -889,7 +1254,7 @@ function handleApi(pathname, req, res, urlObj) {
 
   // Helper to verify that sensitive management commands originate from localhost
   function isLocalClient(ip, r) {
-    const isLoop = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip === LOCAL_IP;
+    const isLoop = isTrustedLocal(ip);
     const origin = r.headers['origin'];
     if (origin) {
       try {
@@ -1127,6 +1492,38 @@ function initUdpDiscovery() {
   }, 4000);
 }
 
+// HTTPS listener, so LAN browsers get a secure context and can encrypt uploads.
+let httpsServer = null;
+
+function startTlsListener() {
+  if (!TLS_ENABLED) return null;
+  try {
+    const material = tlsSelfSigned.loadOrCreateCertificate({
+      dir: path.join(__dirname, 'tls'),
+      commonName: `SafeDrop Hub (${os.hostname()})`,
+      ips: [...new Set([LOCAL_IP, '127.0.0.1', ...getAllLocalIps().map((entry) => entry.ip)])],
+      dnsNames: ['localhost'],
+      logger: console
+    });
+
+    const tlsServer = https.createServer({ key: material.key, cert: material.cert }, handleIncomingRequest);
+    tlsServer.on('error', (err) => {
+      console.warn(`[SafeDrop] HTTPS listener unavailable on ${TLS_PORT}: ${err.message}`);
+      console.warn('[SafeDrop] The web portal will not be able to encrypt uploads until HTTPS works.');
+    });
+    tlsServer.listen(TLS_PORT, '0.0.0.0', () => {
+      console.log(`   LAN Portal:  https://${LOCAL_IP}:${TLS_PORT}/portal  (self-signed certificate)`);
+      if (material.created) {
+        console.log('[SafeDrop] Generated a self-signed TLS certificate for the portal (accept the browser warning once).');
+      }
+    });
+    return tlsServer;
+  } catch (e) {
+    console.warn(`[SafeDrop] Could not start HTTPS listener: ${e.message}`);
+    return null;
+  }
+}
+
 // Start HTTP server listener
 server.listen(PORT, '0.0.0.0', () => {
   initUdpDiscovery();
@@ -1138,5 +1535,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`   Pairing PIN: ${currentPin}`);
   console.log(`   Vault Dir:   ${DOWNLOAD_DIR}`);
   console.log(`   UDP Beacon:  Port ${UDP_PORT}`);
+  httpsServer = startTlsListener();
   console.log('====================================================');
 });

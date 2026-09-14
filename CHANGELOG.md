@@ -7,8 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔐 Added — Encrypted transport
+
+- **Payload encryption is now on the transfer path.** Each chunk is sealed with
+  AES-256-GCM (`crypto_protocol.js`) and is verified before anything reaches disk; a
+  modified tag or a chunk presented under the wrong index is rejected.
+- **Pairing secrets never leave the device.** The 6-digit PIN / one-time token is used as
+  HKDF input and proven with an HMAC over the derived session key, replacing the previous
+  scheme that compared the PIN server-side. Both sides now verify each other's proof.
+- **Session enforcement.** Upload, download, vault listing, and device-name endpoints
+  require a verified session; only loopback callers are exempt.
+- **Pairing rate limiting.** Eight failures from one source IP block further attempts for
+  five minutes.
+- **Self-signed HTTPS portal** (`tls_selfsigned.js`). Browsers only expose WebCrypto in a
+  secure context, so the portal is served over HTTPS with a certificate generated in pure
+  Node (with IP SANs). Without it the portal refuses to pair rather than silently sending
+  plaintext.
+- **Fixed a real nonce-reuse defect.** The previous nonce was derived deterministically from
+  the chunk index, so two files sent in one session would reuse a GCM nonce and leak
+  keystream. Nonces are now drawn from `SecureRandom` / `crypto.randomBytes`.
+- **Fixed `/health` returning HTML.** It sat outside the `/api/v1` prefix, fell through to
+  the static handler, and answered 200 with `index.html`, which also fooled the Tauri
+  startup probe.
+- **Fixed pairing-secret disclosure.** `/api/v1/info` previously returned the PIN and token
+  to any LAN caller, which made the pairing step decorative.
+
 ### Planned
-- Wire the existing X25519 + AES-256-GCM module into the transfer path (payload encryption)
+- Encrypt the second hop of mobile-to-mobile relay (hub to target phone is still plaintext)
 - Resumable file transfer with breakpoint continuation
 - Batch download (TAR.GZ) and QR share links with expiry
 - macOS and Linux desktop validation on real hardware

@@ -135,41 +135,55 @@ async function runTests() {
   assert(parsedUrl.searchParams.get('pin') === '654321', 'Extracts 6-digit dynamic PIN accurately');
 
   // -----------------------------------------------------------------------------
-  // Test 5: Live HTTP Integration with Desktop Hub
+  // Test 5: Live HTTP Integration with Desktop Hub (encrypted transport)
   // -----------------------------------------------------------------------------
-  console.log('\n▶ Test 5: Live HTTP Endpoint Integration (Ping / Handshake / 1MB Upload / Download)');
+  console.log('\n▶ Test 5: Live HTTP Endpoint Integration (Ping / Encrypted Handshake / Encrypted Upload / Download)');
   try {
+    const PROTO = require('../computer-design/desktop_hub/crypto_protocol');
+
     // 1. GET /api/v1/ping
     const pingRes = await httpRequest('GET', 'http://127.0.0.1:8899/api/v1/ping');
     const pingData = JSON.parse(pingRes.body);
     assert(pingRes.statusCode === 200 && pingData.message === 'pong', 'GET /api/v1/ping returns 200 pong');
 
-    // 2. GET /api/v1/info
+    // 2. GET /api/v1/info (loopback is trusted, so the PIN is disclosed here)
     const infoRes = await httpRequest('GET', 'http://127.0.0.1:8899/api/v1/info');
     const infoData = JSON.parse(infoRes.body);
     assert(infoRes.statusCode === 200 && infoData.pin && infoData.qrUri, 'GET /api/v1/info returns valid pin and qrUri');
 
-    // 3. POST /api/v1/handshake/init
-    const fakeClientKey = crypto.randomBytes(32).toString('hex');
+    // 3. POST /api/v1/handshake/init with a real ephemeral X25519 key
+    const keyPair = PROTO.generateKeyPair('x25519');
+    const rawPubKey = PROTO.exportRawPublicKey(keyPair, 'x25519');
     const initRes = await httpRequest('POST', 'http://127.0.0.1:8899/api/v1/handshake/init', {
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ public_key: fakeClientKey, os: 'android' })
+      body: JSON.stringify({ public_key: rawPubKey.toString('hex'), curve: 'x25519', os: 'android' })
     });
     const initData = JSON.parse(initRes.body);
     assert(initRes.statusCode === 200 && initData.server_public_key, 'POST /api/v1/handshake/init returns server public key');
+    assert(initData.session_id, 'POST /api/v1/handshake/init returns a session id');
 
-    // 4. POST /api/v1/handshake/verify
+    // 4. Prove knowledge of the pairing PIN without transmitting it
+    const sharedSecret = PROTO.computeSharedSecret(keyPair.privateKey, Buffer.from(initData.server_public_key, 'hex'), 'x25519');
+    const sessionKey = PROTO.deriveSessionKey(sharedSecret, initData.session_id, String(infoData.pin));
+    const proof = PROTO.clientProof(sessionKey, initData.session_id).toString('hex');
+
     const verifyRes = await httpRequest('POST', 'http://127.0.0.1:8899/api/v1/handshake/verify', {
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin: infoData.pin, token: infoData.token })
+      body: JSON.stringify({ session_id: initData.session_id, proof })
     });
     const verifyData = JSON.parse(verifyRes.body);
-    assert(verifyRes.statusCode === 200 && verifyData.status === 'verified', 'POST /api/v1/handshake/verify establishes trusted session');
+    assert(verifyRes.statusCode === 200 && verifyData.status === 'verified', 'POST /api/v1/handshake/verify establishes an encrypted session');
+    assert(
+      verifyData.server_proof === PROTO.serverProof(sessionKey, initData.session_id).toString('hex'),
+      'Hub returns a server proof that the client can verify'
+    );
 
-    // 5. POST /api/v1/transfer/upload (Supports UTF-8 filenames with spaces and symbols)
+    // 5. POST /api/v1/transfer/upload with an AES-256-GCM sealed chunk (UTF-8 filename)
     const taskId = `task_e2e_${Date.now()}`;
     const testFileName = `Graduation_Project_SafeDrop_E2E_${Date.now()}.txt`;
     const filePayload = Buffer.from('SafeDrop Cross-Platform Secure Transfer: UTF-8 encoding, Scoped Storage & X25519 Encryption.\n', 'utf8');
+    const sealedChunk = PROTO.encryptChunk(sessionKey, filePayload, taskId, 0);
+
     const uploadRes = await httpRequest('POST', 'http://127.0.0.1:8899/api/v1/transfer/upload', {
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -177,16 +191,38 @@ async function runTests() {
         'X-File-Name': encodeURIComponent(testFileName),
         'X-File-Size': filePayload.length.toString(),
         'X-Chunk-Index': '0',
-        'X-Chunk-Count': '1'
+        'X-Chunk-Count': '1',
+        'X-Encrypted': '1',
+        'X-Session-Id': initData.session_id
       },
-      body: filePayload
+      body: sealedChunk
     });
     const uploadData = JSON.parse(uploadRes.body);
-    assert(uploadRes.statusCode === 200 && uploadData.status === 'completed', 'Chunked file upload completed and stored to disk');
+    assert(uploadRes.statusCode === 200 && uploadData.status === 'completed', 'Encrypted chunk upload completed and stored to disk');
 
-    // 6. GET /api/v1/files/download/:name (Download and integrity check)
-    const downloadRes = await httpRequest('GET', `http://127.0.0.1:8899/api/v1/files/download/${encodeURIComponent(testFileName)}`);
-    assert(downloadRes.statusCode === 200 && downloadRes.bodyBuffer.equals(filePayload), 'Downloaded file content matches uploaded payload 100% bit-for-bit');
+    // 6. GET /api/v1/files/download/:name (decrypted, integrity check)
+    const downloadRes = await httpRequest('GET', `http://127.0.0.1:8899/api/v1/files/download/${encodeURIComponent(testFileName)}`, {
+      headers: { 'X-Session-Id': initData.session_id }
+    });
+    assert(downloadRes.statusCode === 200 && downloadRes.bodyBuffer.equals(filePayload), 'Downloaded file content matches uploaded payload 100% bit-for-bit after decryption');
+
+    // 7. A tampered tag must be refused server-side
+    const tamperTask = `task_e2e_tamper_${Date.now()}`;
+    const tamperedChunk = PROTO.encryptChunk(sessionKey, Buffer.from('authentic payload'), tamperTask, 0);
+    tamperedChunk[tamperedChunk.length - 1] ^= 0x01;
+    const tamperRes = await httpRequest('POST', 'http://127.0.0.1:8899/api/v1/transfer/upload', {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-Task-Id': tamperTask,
+        'X-File-Name': encodeURIComponent('tampered_e2e.bin'),
+        'X-Chunk-Index': '0',
+        'X-Chunk-Count': '1',
+        'X-Encrypted': '1',
+        'X-Session-Id': initData.session_id
+      },
+      body: tamperedChunk
+    });
+    assert(tamperRes.statusCode === 400, 'Hub rejects a chunk whose authentication tag was modified');
 
   } catch (e) {
     assert(false, `HTTP integration error: ${e.message}`);

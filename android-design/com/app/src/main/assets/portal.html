@@ -879,6 +879,152 @@
       let tokenParam = urlParams.get('token') || '';
       let isVerified = false;
 
+      /**
+       * Browser-side mirror of computer-design/desktop_hub/crypto_protocol.js.
+       *
+       * The pairing PIN (or QR token) is used locally as HKDF input and proven with an HMAC;
+       * it is never sent to the hub. Uploaded chunks are sealed with AES-256-GCM using a
+       * fresh random nonce, with the task id and chunk index bound in as AAD.
+       */
+      const SafeDropCrypto = (() => {
+        const PROTOCOL = 'safedrop-e2e-v1';
+        const NONCE_LEN = 12;
+        const TAG_LEN = 16;
+        const enc = new TextEncoder();
+
+        let curve = 'x25519';
+
+        function toHex(buf) {
+          return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function fromHex(hex) {
+          const out = new Uint8Array(hex.length / 2);
+          for (let i = 0; i < out.length; i++) {
+            out[i] = parseInt(hex.substr(i * 2, 2), 16);
+          }
+          return out;
+        }
+
+        function concat(...parts) {
+          const total = parts.reduce((n, p) => n + p.length, 0);
+          const out = new Uint8Array(total);
+          let offset = 0;
+          for (const p of parts) { out.set(p, offset); offset += p.length; }
+          return out;
+        }
+
+        /** HKDF salt, matching deriveSalt() on the hub: SHA-256(protocol|salt|sessionId). */
+        async function deriveSalt(sessionId) {
+          return new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(`${PROTOCOL}|salt|${sessionId}`)));
+        }
+
+        async function generateKeyPair() {
+          // X25519 is preferred; older WebCrypto builds fall back to P-256.
+          try {
+            const pair = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);
+            curve = 'x25519';
+            return pair;
+          } catch (_) {
+            const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+            curve = 'p-256';
+            return pair;
+          }
+        }
+
+        async function exportPublicKey(pair) {
+          return new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+        }
+
+        async function importPublicKey(raw) {
+          if (curve === 'x25519') {
+            return crypto.subtle.importKey('raw', raw, { name: 'X25519' }, false, []);
+          }
+          return crypto.subtle.importKey('raw', raw, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+        }
+
+        async function deriveSharedSecret(pair, serverRawPub) {
+          const serverKey = await importPublicKey(serverRawPub);
+          const algorithm = curve === 'x25519' ? { name: 'X25519', public: serverKey } : { name: 'ECDH', public: serverKey };
+          return new Uint8Array(await crypto.subtle.deriveBits(algorithm, pair.privateKey, 256));
+        }
+
+        /**
+         * Derive the 256-bit session key as raw bytes so it can serve as both an AES key and
+         * an HMAC key. HKDF `info` carries the pairing secret.
+         */
+        async function deriveSessionKeyBytes(sharedSecret, sessionId, pairingSecret) {
+          const hkdfKey = await crypto.subtle.importKey('raw', sharedSecret, 'HKDF', false, ['deriveBits']);
+          const salt = await deriveSalt(sessionId);
+          const info = enc.encode(`${PROTOCOL}|key|${pairingSecret}`);
+          const bits = await crypto.subtle.deriveBits(
+            { name: 'HKDF', hash: 'SHA-256', salt, info },
+            hkdfKey,
+            256
+          );
+          return new Uint8Array(bits);
+        }
+
+        async function hmac(keyBytes, message) {
+          const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+          return new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(message)));
+        }
+
+        function clientProof(keyBytes, sessionId) {
+          return hmac(keyBytes, `${PROTOCOL}|verify|${sessionId}`);
+        }
+
+        function serverProof(keyBytes, sessionId) {
+          return hmac(keyBytes, `${PROTOCOL}|server|${sessionId}`);
+        }
+
+        async function importAesKey(keyBytes) {
+          return crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+        }
+
+        /** Seal one chunk: nonce(12) || ciphertext || tag(16). */
+        async function encryptChunk(keyBytes, data, taskId, chunkIndex) {
+          const key = await importAesKey(keyBytes);
+          const nonce = crypto.getRandomValues(new Uint8Array(NONCE_LEN));
+          const aad = enc.encode(`${PROTOCOL}|chunk|${taskId}|${chunkIndex}`);
+          const sealed = new Uint8Array(await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: nonce, additionalData: aad, tagLength: 128 },
+            key,
+            data
+          ));
+          return concat(nonce, sealed);
+        }
+
+        return {
+          PROTOCOL,
+          NONCE_LEN,
+          TAG_LEN,
+          toHex,
+          fromHex,
+          getCurve: () => curve,
+          generateKeyPair,
+          exportPublicKey,
+          deriveSharedSecret,
+          deriveSessionKeyBytes,
+          clientProof,
+          serverProof,
+          encryptChunk
+        };
+      })();
+
+      /** Active encrypted session, if the handshake has succeeded. */
+      const session = {
+        id: null,
+        key: null,
+        get active() { return !!(this.id && this.key); }
+      };
+
+      /** Attach the session id to a request's headers once a session exists. */
+      function withSession(headers = {}) {
+        if (session.id) headers['X-Session-Id'] = session.id;
+        return headers;
+      }
+
       const state = {
         hostInfo: null,
         files: [],
@@ -953,28 +1099,80 @@
         }
       }
 
-      // 3. Verify PIN
+      // 3. Verify PIN by proving knowledge of the pairing secret over an ECDH session
       async function verifyPin(pin, token = '') {
+        const pairingSecret = String(pin || token || '');
+        if (!pairingSecret) {
+          showPinModal();
+          return false;
+        }
+
+        // WebCrypto only exists in a secure context. Over plain http:// on a LAN address the
+        // browser hides it, and without it there is no way to encrypt the upload, so fail
+        // with a pointer to the HTTPS portal instead of silently sending plaintext.
+        if (!window.isSecureContext || !window.crypto || !window.crypto.subtle) {
+          dom.authBadge.className = 'auth-badge locked';
+          dom.authBadgeText.textContent = '当前地址不支持加密';
+          showToast('此页面无法加密传输：请改用桌面端显示的 https:// 门户地址打开');
+          showPinModal();
+          return false;
+        }
+
         try {
-          const res = await fetch('/api/v1/handshake/verify', {
+          // a. Ephemeral key agreement
+          const pair = await SafeDropCrypto.generateKeyPair();
+          const rawPub = await SafeDropCrypto.exportPublicKey(pair);
+
+          const initRes = await fetch('/api/v1/handshake/init', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pin: pin || '', token: token || '' })
+            body: JSON.stringify({
+              public_key: SafeDropCrypto.toHex(rawPub),
+              curve: SafeDropCrypto.getCurve()
+            })
           });
-          const data = await res.json();
-          if (res.ok && data.code === 0) {
+          if (!initRes.ok) throw new Error(`handshake/init HTTP ${initRes.status}`);
+          const initData = await initRes.json();
+
+          // b. Derive the session key locally; the secret never leaves this browser
+          const shared = await SafeDropCrypto.deriveSharedSecret(pair, SafeDropCrypto.fromHex(initData.server_public_key));
+          const keyBytes = await SafeDropCrypto.deriveSessionKeyBytes(shared, initData.session_id, pairingSecret);
+
+          // c. Prove we derived the same key
+          const proof = SafeDropCrypto.toHex(await SafeDropCrypto.clientProof(keyBytes, initData.session_id));
+          const verifyRes = await fetch('/api/v1/handshake/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: initData.session_id, proof })
+          });
+
+          if (verifyRes.ok) {
+            const verifyData = await verifyRes.json();
+
+            // d. Confirm the hub holds the same key, which authenticates the peer
+            const expected = SafeDropCrypto.toHex(await SafeDropCrypto.serverProof(keyBytes, initData.session_id));
+            if (verifyData.server_proof !== expected) {
+              throw new Error('server proof mismatch');
+            }
+
+            session.id = initData.session_id;
+            session.key = keyBytes;
             isVerified = true;
-            sessionStorage.setItem('safedrop_portal_pin', pin);
+            sessionStorage.setItem('safedrop_portal_pin', pairingSecret);
             hidePinModal();
             dom.authBadge.className = 'auth-badge unlocked';
-            dom.authBadgeText.textContent = '已连接局域网直连';
+            dom.authBadgeText.textContent = '端到端加密会话已建立';
             dom.headerStatusText.textContent = '已连接，可随时传输';
-            showToast('已成功接入对方端！');
+            showToast('已成功接入对方端（加密会话）');
             fetchFiles();
             return true;
           }
-        } catch (_) {}
+        } catch (err) {
+          console.warn('[SafeDrop] pairing failed:', err);
+        }
 
+        session.id = null;
+        session.key = null;
         dom.authBadge.className = 'auth-badge locked';
         dom.authBadgeText.textContent = '未输入 PIN 解锁';
         showPinModal();
@@ -1104,17 +1302,30 @@
           const chunkBlob = file.slice(start, end);
 
           try {
+            if (!session.active) {
+              throw new Error('尚未建立加密会话，请先输入配对码');
+            }
+
+            // Seal the chunk before it leaves the browser.
+            const sealedBlob = await SafeDropCrypto.encryptChunk(
+              session.key,
+              new Uint8Array(await chunkBlob.arrayBuffer()),
+              taskId,
+              idx
+            );
+
             const res = await fetch('/api/v1/transfer/upload', {
               method: 'POST',
-              headers: {
+              headers: withSession({
                 'Content-Type': 'application/octet-stream',
                 'X-Task-Id': taskId,
                 'X-File-Name': encodeURIComponent(file.name),
                 'X-File-Size': file.size.toString(),
                 'X-Chunk-Index': idx.toString(),
-                'X-Chunk-Count': totalChunks.toString()
-              },
-              body: chunkBlob
+                'X-Chunk-Count': totalChunks.toString(),
+                'X-Encrypted': '1'
+              }),
+              body: sealedBlob
             });
 
             if (!res.ok) {
@@ -1178,7 +1389,7 @@
       // 5. Fetch & render files for download
       async function fetchFiles() {
         try {
-          const res = await fetch('/api/v1/files/list');
+          const res = await fetch('/api/v1/files/list', { headers: withSession() });
           if (res.ok) {
             const data = await res.json();
             state.files = data.files || [];
@@ -1196,7 +1407,6 @@
 
         dom.filesEmptyPlaceholder.style.display = 'none';
         const rowsHtml = state.files.map(f => {
-          const downloadUrl = `/api/v1/files/download/${encodeURIComponent(f.name)}`;
           const timeStr = f.mtime ? new Date(f.mtime).toLocaleString() : '';
           return `
             <div class="file-row">
@@ -1212,17 +1422,22 @@
                   <span class="file-subtext">${formatBytes(f.size || 0)} ${timeStr ? '• ' + timeStr : ''}</span>
                 </div>
               </div>
-              <a href="${downloadUrl}" download="${escapeHtml(f.name)}" class="btn-download-file">
+              <button type="button" class="btn-download-file" data-download="${escapeHtml(f.name)}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="7 10 12 15 17 10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
                 <span>下载</span>
-              </a>
+              </button>
             </div>
           `;
         }).join('');
+
+        // Downloads need the session header, so they cannot be plain anchor links.
+        dom.filesListContainer.querySelectorAll('[data-download]').forEach((btn) => {
+          btn.addEventListener('click', () => downloadFile(btn.getAttribute('data-download')));
+        });
 
         dom.filesListContainer.innerHTML = rowsHtml;
       }
@@ -1231,6 +1446,35 @@
         fetchFiles();
         showToast('共享文件列表已刷新');
       });
+
+      // 5.1 Download a vault file through an authenticated request
+      async function downloadFile(name) {
+        if (!session.active) {
+          showToast('请先输入配对码解锁');
+          showPinModal();
+          return;
+        }
+        try {
+          const res = await fetch(`/api/v1/files/download/${encodeURIComponent(name)}`, {
+            headers: withSession()
+          });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+          showToast(`已开始下载 ${name}`);
+        } catch (err) {
+          showToast(`下载失败: ${err.message}`);
+        }
+      }
 
       // 6. Tabs
       function initTabs() {

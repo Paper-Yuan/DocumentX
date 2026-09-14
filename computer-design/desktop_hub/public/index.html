@@ -351,11 +351,11 @@
 
           <div class="setting-row">
             <div class="setting-info">
-              <span class="setting-title">传输载荷加密（尚未启用）</span>
-              <span class="setting-desc">X25519 + AES-256-GCM 已实现但未接入传输链路，文件内容当前为明文传输</span>
+              <span class="setting-title">传输载荷加密（已启用）</span>
+              <span class="setting-desc">每个分块以 X25519 协商密钥 + AES-256-GCM 加密封装，服务端验签通过才落盘</span>
             </div>
             <label class="switch">
-              <input type="checkbox" id="cryptoEnforceToggle" disabled>
+              <input type="checkbox" id="cryptoEnforceToggle" checked disabled>
               <span class="slider round"></span>
             </label>
           </div>

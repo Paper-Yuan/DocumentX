@@ -1272,7 +1272,7 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
 
-            // 2. Perform X25519 key exchange
+            // 2. Ephemeral ECDH key agreement
             val keyPair = cryptoEngine.generateEphemeralKeyPair()
             val rawPubKey = cryptoEngine.extractRawPublicKey(keyPair)
             val rawPubKeyHex = cryptoEngine.bytesToHex(rawPubKey)
@@ -1283,13 +1283,48 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
 
-            // 3. Verify out-of-band credential (Token or PIN)
-            val verifyOk = hubClient.verifyHandshake(ip, port, pin, token)
-            if (verifyOk) {
+            val sessionId = handshakeResp.get("session_id")?.asString
+            val serverPubKeyHex = handshakeResp.get("server_public_key")?.asString
+            if (sessionId.isNullOrEmpty() || serverPubKeyHex.isNullOrEmpty()) {
+                Toast.makeText(this@MainActivity, "握手响应缺少会话参数", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            // 3. Derive the session key locally. The pairing secret (PIN or QR token) stays on
+            //    this device: it is used as HKDF input and proven via HMAC, never transmitted.
+            val pairingSecret = when {
+                pin.isNotEmpty() -> pin
+                token.isNotEmpty() -> token
+                else -> {
+                    Toast.makeText(this@MainActivity, "缺少配对信息，请重新扫码", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+            }
+
+            val sessionKey = try {
+                cryptoEngine.deriveSessionKey(
+                    localKeyPair = keyPair,
+                    remoteRawPublicKey = cryptoEngine.hexToBytes(serverPubKeyHex),
+                    sessionId = sessionId,
+                    pairingSecret = pairingSecret
+                )
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "会话密钥派生失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val clientProofHex = cryptoEngine.bytesToHex(cryptoEngine.clientProof(sessionKey, sessionId))
+            val verifyResp = hubClient.verifyHandshake(ip, port, sessionId, clientProofHex)
+            val serverProofHex = verifyResp?.get("server_proof")?.asString
+
+            if (verifyResp != null && !serverProofHex.isNullOrEmpty() &&
+                cryptoEngine.verifyServerProof(sessionKey, sessionId, serverProofHex)) {
+                // Both sides proved the same key: the session is mutually authenticated.
+                hubClient.setSession(sessionId, sessionKey)
                 isHubConnected = true
                 trustedPeers.add("$ip:$port")
-                binding.tvRadarStatus.text = "🟢 信任锚点已建立：$ip (动态 PIN 核验通过)"
-                Toast.makeText(this@MainActivity, "配对成功！已成功建立信任连接", Toast.LENGTH_LONG).show()
+                binding.tvRadarStatus.text = "🟢 加密会话已建立：$ip (PIN 核验通过)"
+                Toast.makeText(this@MainActivity, "配对成功！已建立端到端加密会话", Toast.LENGTH_LONG).show()
 
                 val info = hubClient.fetchHubInfo(ip, port)
                 val devType = info?.get("device_type")?.asString

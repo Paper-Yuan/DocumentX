@@ -3,6 +3,7 @@ package com.safedrop.mobile.core.network
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import com.safedrop.mobile.core.crypto.CryptoEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -11,24 +12,53 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.InputStream
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
+import javax.crypto.SecretKey
 
 /**
- * Mobile HTTP Communication Client to Desktop Hub
- * Strictly aligned with computer-design/desktop_hub/server.js API definitions:
+ * Mobile HTTP Communication Client to Desktop Hub.
+ * Aligned with computer-design/desktop_hub/server.js API definitions:
  * 1. Health check and info retrieval (ping / info)
- * 2. Handshake and out-of-band credential verification (handshake/init, handshake/verify)
- * 3. 1MB chunked streaming upload (transfer/upload)
+ * 2. Ephemeral ECDH handshake with an HMAC proof (handshake/init, handshake/verify)
+ * 3. Encrypted chunked upload (transfer/upload)
  * 4. Desktop vault file query and download (files/list, files/download)
+ *
+ * Once [setSession] has been called, requests carry X-Session-Id and upload payloads are
+ * sealed with AES-256-GCM. The hub rejects remote uploads that are not inside a session.
  */
 class DesktopHubClient {
 
     private val tag = "DesktopHubClient"
     private val gson = Gson()
+    private val cryptoEngine = CryptoEngine()
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
+
+    @Volatile
+    private var sessionId: String? = null
+
+    @Volatile
+    private var sessionKey: SecretKey? = null
+
+    /** Record the verified session so subsequent calls can be authenticated and encrypted. */
+    fun setSession(id: String, key: SecretKey) {
+        sessionId = id
+        sessionKey = key
+    }
+
+    fun clearSession() {
+        sessionId = null
+        sessionKey = null
+    }
+
+    fun hasSession(): Boolean = sessionId != null && sessionKey != null
+
+    private fun Request.Builder.withSession(): Request.Builder {
+        sessionId?.let { header("X-Session-Id", it) }
+        return this
+    }
 
     /**
      * 1. Health check ping endpoint
@@ -65,6 +95,7 @@ class DesktopHubClient {
 
     /**
      * 3. Initiate handshake (POST /api/v1/handshake/init)
+     * Sends our ephemeral public key and gets back the hub's public key plus a session id.
      */
     suspend fun initHandshake(
         host: String,
@@ -75,6 +106,7 @@ class DesktopHubClient {
             val url = "http://$host:$port/api/v1/handshake/init"
             val payload = JsonObject().apply {
                 addProperty("public_key", clientRawPubKeyHex)
+                addProperty("curve", "x25519")
                 addProperty("os", "android")
                 addProperty("device_name", "SafeDrop Android Mobile")
             }
@@ -92,27 +124,37 @@ class DesktopHubClient {
     }
 
     /**
-     * 4. Verify handshake credential (POST /api/v1/handshake/verify)
+     * 4. Prove possession of the pairing secret (POST /api/v1/handshake/verify).
+     *
+     * The PIN / token is never transmitted: the caller derives the session key locally from
+     * the ECDH secret and the pairing secret, then sends an HMAC proof. On success the hub
+     * returns its own proof, which the caller should check before trusting the session.
      */
     suspend fun verifyHandshake(
         host: String,
         port: Int,
-        pin: String?,
-        token: String?
-    ): Boolean = withContext(Dispatchers.IO) {
+        sessionId: String,
+        proofHex: String
+    ): JsonObject? = withContext(Dispatchers.IO) {
         try {
             val url = "http://$host:$port/api/v1/handshake/verify"
             val payload = JsonObject().apply {
-                if (!pin.isNullOrEmpty()) addProperty("pin", pin)
-                if (!token.isNullOrEmpty()) addProperty("token", token)
+                addProperty("session_id", sessionId)
+                addProperty("proof", proofHex)
             }
             val requestBody = payload.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder().url(url).post(requestBody).build()
             val response = okHttpClient.newCall(request).execute()
-            response.isSuccessful
+            if (response.isSuccessful) {
+                val body = response.body?.string()
+                gson.fromJson(body, JsonObject::class.java)
+            } else {
+                Log.w(tag, "Handshake verify rejected: HTTP ${response.code}")
+                null
+            }
         } catch (e: Exception) {
             Log.e(tag, "Handshake verify failed: ${e.message}")
-            false
+            null
         }
     }
 
@@ -136,7 +178,11 @@ class DesktopHubClient {
     }
 
     /**
-     * 5. 1MB chunked streaming upload (POST /api/v1/transfer/upload)
+     * 5. Encrypted chunked upload (POST /api/v1/transfer/upload).
+     *
+     * Seals the chunk with AES-256-GCM using the session key when a session is present, and
+     * marks the request with X-Encrypted. The hub refuses unencrypted uploads from the LAN,
+     * so a missing session fails loudly instead of silently sending plaintext.
      */
     suspend fun uploadChunk(
         host: String,
@@ -149,9 +195,16 @@ class DesktopHubClient {
         chunkData: ByteArray
     ): Boolean = withContext(Dispatchers.IO) {
         try {
+            val key = sessionKey
+            if (key == null) {
+                Log.e(tag, "Refusing to upload chunk [$chunkIndex/$chunkCount]: no session key")
+                return@withContext false
+            }
+
             val encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20")
+            val sealedChunk = cryptoEngine.encryptChunk(chunkData, key, taskId, chunkIndex)
             val url = "http://$host:$port/api/v1/transfer/upload"
-            val requestBody = chunkData.toRequestBody("application/octet-stream".toMediaType())
+            val requestBody = sealedChunk.toRequestBody("application/octet-stream".toMediaType())
             val request = Request.Builder()
                 .url(url)
                 .header("X-Task-Id", taskId)
@@ -159,10 +212,15 @@ class DesktopHubClient {
                 .header("X-File-Size", fileSize.toString())
                 .header("X-Chunk-Index", chunkIndex.toString())
                 .header("X-Chunk-Count", chunkCount.toString())
+                .header("X-Encrypted", "1")
+                .withSession()
                 .post(requestBody)
                 .build()
 
             val response = okHttpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                Log.w(tag, "Chunk upload rejected [$chunkIndex/$chunkCount]: HTTP ${response.code} ${response.body?.string()}")
+            }
             response.isSuccessful
         } catch (e: Exception) {
             Log.e(tag, "Chunk upload failed [$chunkIndex/$chunkCount]: ${e.message}")
@@ -181,7 +239,7 @@ class DesktopHubClient {
         try {
             val encodedName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20")
             val url = "http://$host:$port/api/v1/files/download/$encodedName"
-            val request = Request.Builder().url(url).get().build()
+            val request = Request.Builder().url(url).withSession().get().build()
             val response = okHttpClient.newCall(request).execute()
             if (response.isSuccessful) response.body else null
         } catch (e: Exception) {
@@ -256,7 +314,7 @@ class DesktopHubClient {
     suspend fun fetchDeviceNames(host: String, port: Int): Map<String, String>? = withContext(Dispatchers.IO) {
         try {
             val url = "http://$host:$port/api/v1/devices/names"
-            val request = Request.Builder().url(url).get().build()
+            val request = Request.Builder().url(url).withSession().get().build()
             val response = okHttpClient.newCall(request).execute()
             if (response.isSuccessful) {
                 val body = response.body?.string()

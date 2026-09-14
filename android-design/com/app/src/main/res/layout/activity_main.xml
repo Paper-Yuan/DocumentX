@@ -976,7 +976,7 @@
                             android:id="@+id/tvSettingsSecurityTitle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="传输与配对机制"
+                            android:text="加密与配对机制"
                             android:textColor="@color/text_primary_dark"
                             android:textSize="14sp"
                             android:textStyle="bold" />
@@ -987,7 +987,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
                             android:lineSpacingExtra="3dp"
-                            android:text="• 传输链路: 明文 HTTP，载荷未加密（请仅在可信局域网使用）\n• 分块传输: 1MB 流式分块，服务端 4MB 上限\n• 沙箱规范: Android 10+ Scoped Storage 分区存储\n• 配对协议: 6 位动态 PIN 码 + 二维码带外信任锚点"
+                            android:text="• 载荷加密: AES-256-GCM 分块封装，服务端验签通过才落盘\n• 密钥协商: X25519 临时密钥 + HKDF-SHA256（前向保密）\n• 配对协议: 6 位动态 PIN 码，仅作 HKDF 输入并经 HMAC 双向证明\n• 沙箱规范: Android 10+ Scoped Storage 分区存储"
                             android:textColor="@color/text_secondary_dark"
                             android:textSize="12sp" />
 
