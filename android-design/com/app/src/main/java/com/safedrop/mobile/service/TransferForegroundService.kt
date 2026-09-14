@@ -155,7 +155,7 @@ class TransferForegroundService : Service() {
         val speedText = "%.1f MB/s".format(speed)
         return NotificationCompat.Builder(this, SafeDropApp.CHANNEL_TRANSFER_ID)
             .setSmallIcon(R.drawable.ic_send)
-            .setContentTitle("SafeDrop 安全快传中")
+            .setContentTitle("SafeDrop 正在传输")
             .setContentText("$fileName • $speedText ($progress%)")
             .setProgress(100, progress, false)
             .setOngoing(true)
