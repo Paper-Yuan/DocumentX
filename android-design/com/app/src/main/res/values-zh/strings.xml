@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SafeDrop</string>
-    <string name="app_subtitle">跨平台安全快传移动端</string>
+    <string name="app_subtitle">跨平台局域网快传移动端</string>
 
     <!-- Navigation labels -->
     <string name="nav_radar">设备发现</string>

@@ -59,7 +59,7 @@ class ShareReceiverActivity : AppCompatActivity() {
         val firstFileName = resolveFileName(pendingUris.first())
         binding.tvShareFileInfo.text = "已选取 ${pendingUris.size} 个文件: $firstFileName"
 
-        // Forward to MainActivity to initiate streaming encrypted upload
+        // Forward to MainActivity to initiate the streaming upload
         val forwardIntent = Intent(this, com.safedrop.mobile.ui.MainActivity::class.java).apply {
             putParcelableArrayListExtra("EXTRA_SHARED_URIS", ArrayList(pendingUris))
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP

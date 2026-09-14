@@ -516,7 +516,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="2dp"
-                                android:text="192.168.10.42:8899 • X25519 加密通道"
+                                android:text="192.168.10.42:8899 • X25519 配对标识"
                                 android:textColor="@color/text_secondary_dark"
                                 android:textSize="11sp" />
 
@@ -567,7 +567,7 @@
                         android:layout_height="match_parent"
                         android:gravity="center"
                         android:padding="32dp"
-                        android:text="已与该设备建立加密直连通道\n轻触左下方“投送”发送文件，或在下方输入即时消息"
+                        android:text="已与该设备建立局域网连接\n轻触左下方“投送”发送文件，或在下方输入即时消息"
                         android:textColor="@color/text_secondary_dark"
                         android:textSize="13sp"
                         android:visibility="visible" />
@@ -976,7 +976,7 @@
                             android:id="@+id/tvSettingsSecurityTitle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="密码学与安全核心"
+                            android:text="传输与配对机制"
                             android:textColor="@color/text_primary_dark"
                             android:textSize="14sp"
                             android:textStyle="bold" />
@@ -987,7 +987,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
                             android:lineSpacingExtra="3dp"
-                            android:text="• 密钥协商: PFS X25519 (ECDH) 临时会话密钥\n• 加密传输: AES-256-GCM 1MB 流式分块背压控制\n• 沙箱规范: Android 10+ Scoped Storage 分区存储\n• 穿透协议: 6 位动态 PIN 码 + 二维码带外信任锚点"
+                            android:text="• 传输链路: 明文 HTTP，载荷未加密（请仅在可信局域网使用）\n• 分块传输: 1MB 流式分块，服务端 4MB 上限\n• 沙箱规范: Android 10+ Scoped Storage 分区存储\n• 配对协议: 6 位动态 PIN 码 + 二维码带外信任锚点"
                             android:textColor="@color/text_secondary_dark"
                             android:textSize="12sp" />
 

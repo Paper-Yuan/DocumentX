@@ -849,7 +849,7 @@
           <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
       </div>
-      <h3>安全配对验证</h3>
+      <h3>配对验证</h3>
       <p>请输入对方端屏幕上显示的 6 位动态 PIN 码以解锁文件上传与下载：</p>
       
       <div class="pin-inputs-row">
@@ -967,7 +967,7 @@
             sessionStorage.setItem('safedrop_portal_pin', pin);
             hidePinModal();
             dom.authBadge.className = 'auth-badge unlocked';
-            dom.authBadgeText.textContent = '已建立安全直连';
+            dom.authBadgeText.textContent = '已连接局域网直连';
             dom.headerStatusText.textContent = '已连接，可随时传输';
             showToast('已成功接入对方端！');
             fetchFiles();
