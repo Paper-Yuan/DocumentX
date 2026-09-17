@@ -323,6 +323,15 @@
     setInterval(fetchFiles, 6000);
     // Periodic messages query (every 1.2 seconds for real-time chat)
     setInterval(fetchMessages, 1200);
+    // Periodic system info refresh. The hub rotates the pairing PIN every time a device
+    // completes the handshake, so a value fetched once at startup goes stale after the first
+    // successful pairing and every later device that reads the on-screen PIN or scans the
+    // displayed QR code is rejected with "Pairing proof verification failed". Polling keeps
+    // the shown PIN, QR payload and portal link in step with what the hub will actually
+    // accept. Off the mobile role, where this page is the target rather than the initiator.
+    if (!state.isMobile) {
+      setInterval(fetchSystemInfo, 3000);
+    }
 
     // Mobile device heartbeat announcement
     if (state.isMobile) {
@@ -452,6 +461,9 @@
     try {
       const res = await fetch(apiUrl('/api/v1/info'));
       const data = await res.json();
+      // Redrawing the QR canvas is only needed when the payload it encodes changed;
+      // this runs on a timer, so skip the work otherwise.
+      const qrChanged = !state.info || state.info.qrUri !== data.qrUri || state.info.webUrl !== data.webUrl;
       state.info = data;
 
       if (dom.sidebarIpText) dom.sidebarIpText.textContent = `${data.localIp}:${data.port}`;
@@ -468,7 +480,7 @@
       }
 
       // Render pairing QR code
-      renderQrCode();
+      if (qrChanged) renderQrCode();
     } catch (e) {
       console.warn('Fetch info failed:', e);
     }

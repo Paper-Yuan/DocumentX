@@ -379,7 +379,90 @@ async function main() {
     assert.strictEqual(plaintextRemote.status, 401, `expected 401, got ${plaintextRemote.status}`);
   });
 
-  console.log('\n▶ Section 5: rate limiting');
+  // ---------------------------------------------------------------------------
+  // Sections 5-6 run here, before the rate-limit test, because that test deliberately locks
+  // out this source IP for five minutes and every later handshake would return 429.
+  // ---------------------------------------------------------------------------
+  console.log('\n▶ Section 5: pairing-secret rotation grace');
+  // The hub rotates PIN and token on every successful handshake while the desktop UI refreshes
+  // on a timer. When the retired credentials were stored in a single slot, a second pairing
+  // inside the grace window evicted the value still displayed on screen, and the next device
+  // was rejected with "Pairing proof verification failed" despite reading it correctly.
+
+  // Each rotation step reads the live PIN rather than reusing the startup HUB_PIN, so the test
+  // does not depend on where the startup value happens to sit relative to the grace window.
+  const livePinNow = async () => json(await request('GET', '/api/v1/info', { host: LOOPBACK })).pin;
+
+  // Every successful pairing both retires the credential it used and rotates in a new one, so
+  // each pair() call below advances the retirement history by one generation.
+  const beforeRotation = await livePinNow();
+  await pair(beforeRotation);
+  const afterFirst = json(await request('GET', '/api/v1/info', { host: LOOPBACK }));
+  check('a successful pairing rotates the PIN', () => {
+    assert.notStrictEqual(afterFirst.pin, beforeRotation, 'PIN should have rotated');
+  });
+
+  // Retirement #2: the value the user is still looking at must keep working.
+  const stalePin = await pair(beforeRotation);
+  check('the just-retired PIN is still accepted inside the grace window', () => {
+    assert.strictEqual(stalePin.verifyRes.status, 200,
+      `stale-but-displayed PIN rejected: ${stalePin.verifyRes.status} ${stalePin.verifyRes.body}`);
+  });
+
+  // Retirement #3 puts the displayed credential at the very edge of the retained history.
+  await pair(await livePinNow());
+  const atBoundary = await pair(beforeRotation);
+  check('a displayed credential is accepted up to the grace generation cap', () => {
+    assert.strictEqual(atBoundary.verifyRes.status, 200,
+      `credential at the cap was rejected: ${atBoundary.verifyRes.status}`);
+  });
+
+  // Retirement #4 pushes it out. Asserting the failure keeps the window provably bounded:
+  // without this, an accidentally unbounded history would pass the checks above.
+  await pair(await livePinNow());
+  const beyondCap = await pair(beforeRotation);
+  check('a credential past the cap is no longer accepted', () => {
+    assert.strictEqual(beyondCap.verifyRes.status, 403,
+      `expected the window to be bounded, got ${beyondCap.verifyRes.status}`);
+  });
+
+  // A credential that was never issued must still be refused, or the grace window would have
+  // turned the proof check into an accept-anything path.
+  const neverIssued = beforeRotation === '000000' ? '000001' : '000000';
+  const junk = await pair(neverIssued);
+  check('a credential that was never issued is still rejected', () => {
+    assert.strictEqual(junk.verifyRes.status, 403, `expected 403, got ${junk.verifyRes.status}`);
+  });
+
+  console.log('\n▶ Section 6: session binding');
+  // Section 5 rotated the credentials several times, so the startup HUB_PIN captured at the top
+  // of this run now sits outside the grace window. Read the live value instead, which is also
+  // what the desktop UI does on its refresh timer.
+  const livePin = json(await request('GET', '/api/v1/info', { host: LOOPBACK })).pin;
+  const session = await pair(livePin);
+  const listing = await request('GET', '/api/v1/files/list', {
+    headers: { 'X-Session-Id': session.sessionId }
+  });
+  check('a negotiated session authenticates an authorized endpoint', () => {
+    assert.strictEqual(listing.status, 200, `got ${listing.status}: ${listing.body}`);
+  });
+
+  // Sessions are bound to the peer address, so replaying one from another local address must
+  // fail. Skipped on a host with only one address.
+  const otherIps = localCandidates.filter((ip) => ip !== LAN_HOST && ip !== LOOPBACK);
+  if (otherIps.length > 0) {
+    const foreign = await request('GET', '/api/v1/files/list', {
+      headers: { 'X-Session-Id': session.sessionId },
+      host: otherIps[0]
+    });
+    check('the same session id is refused from a different peer address', () => {
+      assert.strictEqual(foreign.status, 401, `expected 401, got ${foreign.status}`);
+    });
+  } else {
+    console.log('    (skipped: host has a single LAN address)');
+  }
+
+  console.log('\n▶ Section 7: rate limiting');
   let limited = false;
   for (let i = 0; i < 12; i++) {
     const attempt = await pair('123456' === String(HUB_PIN) ? '654321' : '123456');
@@ -389,7 +472,7 @@ async function main() {
     assert.ok(limited, 'expected the hub to rate limit repeated pairing failures');
   });
 
-  console.log('\n▶ Section 6: phone-to-phone relay (sealed bytes forwarded untouched)');
+  console.log('\n▶ Section 8: phone-to-phone relay (sealed bytes forwarded untouched)');
   if (!RELAY_DEST_HOST) {
     check('a relay destination distinct from the hub is available', () => {
       assert.fail('no alternate local IPv4 address; cannot exercise the relay path on this host');
@@ -481,7 +564,7 @@ async function main() {
   await new Promise((resolve) => destPhone.close(resolve));
   }
 
-  console.log('\n▶ Section 7: HTTPS portal (needed for browser WebCrypto)');
+  console.log('\n▶ Section 9: HTTPS portal (needed for browser WebCrypto)');
   const tlsInfo = json(await request('GET', '/api/v1/info', { host: LOOPBACK, tls: true, port: TLS_PORT }));
   check('the hub serves /api/v1/info over HTTPS', () => {
     assert.ok(tlsInfo && tlsInfo.code === 0, 'HTTPS /info should respond');

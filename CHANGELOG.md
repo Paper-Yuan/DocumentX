@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixed — Pairing desync between the two ends
+
+- **The on-screen PIN and QR code now track the hub.** The hub rotates the PIN and one-time
+  token on every successful handshake, but the desktop UI fetched `/api/v1/info` only once at
+  startup, so a displayed PIN went stale the moment any device paired — a second device was
+  then rejected with `Pairing proof verification failed` even after reading the code off the
+  screen correctly. The desktop page now refreshes the pairing payload on a timer, and only
+  redraws the QR canvas when the encoded value actually changed.
+- **Retired pairing credentials survive a bounded grace window.** Only the single most recent
+  previous PIN/token were accepted, so a second pairing inside the 60-second window evicted
+  the value still on screen. Up to three retired generations are now accepted, after which a
+  credential is refused again — the window stays bounded rather than accepting anything.
+- **Sessions expire on inactivity, not on a hard deadline.** The ten-minute limit was measured
+  from session creation, so a session could be dropped mid-use and the peer would present an
+  id the hub had already forgotten, failing with 401 and forcing a fresh pairing. Expiry is now
+  driven by idle time, with an absolute twelve-hour cap, and is enforced on the request path
+  as well as in the GC pass.
+
 ### Planned
 - Resumable file transfer with breakpoint continuation
 - Batch download (TAR.GZ) and QR share links with expiry

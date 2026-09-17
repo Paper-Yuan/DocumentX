@@ -192,19 +192,32 @@ const hostPubDer = hostKeyPair.publicKey.export({ type: 'spki', format: 'der' })
 const hostPubRaw = hostPubDer.subarray(hostPubDer.length - 32); // Extract 32-byte raw public key
 const hostFingerprint = crypto.createHash('sha256').update(hostPubRaw).digest('hex').substring(0, 16).toUpperCase();
 
-// Dynamic pairing credentials with 60s transition grace period
+// Dynamic pairing credentials. A successful handshake rotates both values, so a credential
+// that is still on screen (or in a QR code already being scanned) becomes stale the moment any
+// device pairs. Recently retired credentials therefore stay accepted for a grace period, and
+// more than one generation is kept: with a single previous slot a second pairing inside the
+// window evicted the value still displayed, and the next device was rejected with
+// "Pairing proof verification failed" even though the user had just read it off the screen.
+const PAIRING_GRACE_MS = 60 * 1000;
+const PAIRING_GRACE_GENERATIONS = 3;
 let currentOneTimeToken = crypto.randomBytes(6).toString('hex');
 let currentPin = String(Math.floor(100000 + Math.random() * 900000));
-let prevPin = null;
-let prevToken = null;
-let prevPinTime = 0;
+/** Retired credentials, newest first: [{ pin, token, at }]. */
+let retiredCredentials = [];
 
 // Online devices cache with last-seen timestamps
 const onlineDevices = new Map();
 
 // Ephemeral E2E sessions created by the handshake. Session keys live in memory only.
 const e2eSessions = new Map();
-const SESSION_TTL_MS = 10 * 60 * 1000;
+// Expiry is driven by inactivity, not by the moment the session was created. A hard deadline
+// from createdAt dropped sessions that were still in active use (and any session left idle
+// for ten minutes), which left the peer presenting a session id the hub had already
+// forgotten — the transfer then failed with 401 and needed a fresh pairing. The absolute cap
+// still bounds how long a single negotiation may live, so this stays effectively ephemeral.
+// Both windows are overridable so tests can exercise expiry without waiting.
+const SESSION_IDLE_TTL_MS = Number(process.env.SAFEDROP_SESSION_IDLE_MS) || 10 * 60 * 1000;
+const SESSION_MAX_TTL_MS = Number(process.env.SAFEDROP_SESSION_MAX_MS) || 12 * 60 * 60 * 1000;
 
 // Pairing attempts are rate limited per source IP to bound online guessing of the PIN.
 const pairingAttempts = new Map();
@@ -212,10 +225,17 @@ const PAIRING_MAX_FAILURES = 8;
 const PAIRING_WINDOW_MS = 5 * 60 * 1000;
 const PAIRING_BLOCK_MS = 5 * 60 * 1000;
 
+/** A session lives until it goes idle, with an absolute cap on total lifetime. */
+function sessionExpired(session, now) {
+  if (!session) return true;
+  if (now - session.createdAt > SESSION_MAX_TTL_MS) return true;
+  return now - (session.lastSeen || session.createdAt) > SESSION_IDLE_TTL_MS;
+}
+
 const sessionGcTimer = setInterval(() => {
   const now = Date.now();
   for (const [id, session] of e2eSessions.entries()) {
-    if (now - session.createdAt > SESSION_TTL_MS) e2eSessions.delete(id);
+    if (sessionExpired(session, now)) e2eSessions.delete(id);
   }
   for (const [ip, attempt] of pairingAttempts.entries()) {
     const settled = (!attempt.blockedUntil || now > attempt.blockedUntil);
@@ -762,8 +782,10 @@ function handleApi(pathname, req, res, urlObj) {
 
       const now = Date.now();
       const candidates = [currentPin, currentOneTimeToken];
-      if (prevPin && now - prevPinTime < 60000) candidates.push(prevPin);
-      if (prevToken && now - prevPinTime < 60000) candidates.push(prevToken);
+      for (const retired of retiredCredentials) {
+        if (now - retired.at >= PAIRING_GRACE_MS) continue;
+        candidates.push(retired.pin, retired.token);
+      }
 
       let matchedKey = null;
       for (const secret of candidates) {
@@ -790,10 +812,13 @@ function handleApi(pathname, req, res, urlObj) {
       session.lastSeen = now;
       clearPairingFailures(clientIp);
 
-      // Move current credentials into the grace window, then rotate them.
-      prevPin = currentPin;
-      prevToken = currentOneTimeToken;
-      prevPinTime = now;
+      // Retire the credentials that just got used, then rotate. Retired values are what is
+      // still displayed on screen and in already-rendered QR codes, so they keep working for
+      // the grace window instead of failing the next device to pair.
+      retiredCredentials.unshift({ pin: currentPin, token: currentOneTimeToken, at: now });
+      retiredCredentials = retiredCredentials
+        .filter((entry) => now - entry.at < PAIRING_GRACE_MS)
+        .slice(0, PAIRING_GRACE_GENERATIONS);
       currentPin = String(Math.floor(100000 + Math.random() * 900000));
       currentOneTimeToken = crypto.randomBytes(6).toString('hex');
 
