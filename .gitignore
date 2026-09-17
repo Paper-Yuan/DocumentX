@@ -76,3 +76,10 @@ Desktop.ini
 
 # Agent workspace state
 .zcode/
+
+# Mimosa security-plugin runtime state: per-session baselines, finding ledgers and
+# reports. Transient and session-scoped, so it must not be versioned. The plugin's
+# local policy file .mimosa/config.json is intentionally kept out of git too, so the
+# repo's gate behaviour stays at the plugin default rather than carrying one machine's
+# relaxation into every clone.
+.mimosa/

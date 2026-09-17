@@ -95,9 +95,12 @@ SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有�
 
 | 产物 | 说明 |
 |:---|:---|
-| `SafeDrop-Setup.exe` | Windows 单文件自解压安装包，内置便携 Node 运行时，双击即可安装，无需另外装 Node.js |
-| `app-release.apk` | Android 接收端，需允许"安装未知来源应用" |
+| `SafeDrop-Setup-1.3.0.exe` | Windows 单文件自解压安装包，内置便携 Node 运行时，双击即可安装，无需另外装 Node.js |
+| `SafeDrop-Android-1.3.0.apk` | Android 接收端，需允许"安装未知来源应用" |
+| `SHA256SUMS.txt` | 上述两个产物的 SHA-256 校验值 |
 
+> ⚠️ **桌面端与 Android 端必须同为 v1.3.0。** v1.3.0 起桌面端会拒绝未建立加密握手会话的上传（HTTP 401），旧版 APK（1.0.2 等）没有握手逻辑，连接会直接失败。这是有意为之：宁可失败也不静默退化成明文传输。
+>
 > ⚠️ Android 包使用调试密钥签名（`CN=Android Debug`）。它足够用于自用与内部分发，但**不是**发布到应用商店的签名；同一设备上后续版本必须用同一密钥签名才能覆盖安装。
 >
 > 仓库 `main` 分支不含二进制文件（已在 `.gitignore` 中排除），二进制只挂在 Release 附件上。

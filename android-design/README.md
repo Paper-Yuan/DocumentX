@@ -6,7 +6,9 @@ Android 客户端，作为桌面端 hub 的接入方：发现电脑、扫码或�
 
 ## 一、 交付产物
 
-1. **安装包**：[`SafeDrop-release.apk`](file:///e:/Workbox/DocumentX/android-design/SafeDrop-release.apk)（Android 8.0 ~ 14+）。注意：该文件是较早的构建产物，**不含最新的传输加密**，需要重新构建后才具备加密能力。
+1. **安装包**：[`SafeDrop-release.apk`](file:///e:/Workbox/DocumentX/android-design/SafeDrop-release.apk)（Android 8.0 ~ 14+，v1.3.0，含传输加密）。由 `node pack_apk.js` 从 Gradle 产物归档而来，与 Release 附件 `SafeDrop-Android-1.3.0.apk` 字节一致。
+
+   > ⚠️ 该包使用调试密钥签名（`CN=Android Debug`）。**必须与桌面端同版本使用**：v1.3.0 桌面端会拒绝没有握手会话的上传（返回 401），所以用 1.0.2 等旧版 APK 连接会直接失败。这是有意的设计——宁可失败也不静默退化为明文。
 2. **构建脚本**：[`build_apk.bat`](file:///e:/Workbox/DocumentX/android-design/build_apk.bat)。
 3. **工程源码**：[`com/`](file:///e:/Workbox/DocumentX/android-design/com/)
    - 表现层：Material 3 布局、水波纹雷达 Canvas、CameraX 扫码
