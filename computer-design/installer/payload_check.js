@@ -87,10 +87,69 @@ function verifyBackendSource(hubDir) {
   return { modules, missing };
 }
 
+/**
+ * Read the product version from its single source of truth, APP_VERSION in server.js.
+ * Every other surface (Tauri bundle, Android, installer C# components) must agree with it.
+ */
+function productVersionOf(serverJsPath) {
+  const source = fs.readFileSync(serverJsPath, 'utf8');
+  const match = source.match(/APP_VERSION\s*=\s*'([^']+)'/);
+  if (!match) throw new Error(`APP_VERSION not found in ${serverJsPath}`);
+  return match[1];
+}
+
+/** Every version literal a C# component declares: assembly attributes and the Uninstall entry. */
+function declaredVersionsIn(csSource) {
+  const versions = [];
+  const patterns = [
+    /Assembly(?:File|Informational)?Version\(\s*"([^"]+)"\s*\)/g,
+    /"DisplayVersion"\s*,\s*"([^"]+)"/g
+  ];
+  for (const pattern of patterns) {
+    for (const match of csSource.matchAll(pattern)) versions.push(match[1]);
+  }
+  return versions;
+}
+
+/** Compare on the first three components: assembly attributes carry a fourth build field. */
+function normalizeVersion(value) {
+  return String(value).trim().split('.').slice(0, 3).join('.');
+}
+
+/**
+ * The installer's C# components hardcode their version separately from APP_VERSION, and they
+ * previously drifted (still 1.0.1 while everything else moved on), which surfaced only in the
+ * Windows file properties and Programs-and-Features entry. Failing the build here keeps that
+ * from shipping again.
+ *
+ * @returns {{productVersion: string, mismatches: string[]}}
+ */
+function verifySourceVersions({ serverJsPath, csFiles }) {
+  const productVersion = productVersionOf(serverJsPath);
+  const mismatches = [];
+  for (const file of csFiles) {
+    const source = fs.readFileSync(file, 'utf8');
+    const declared = declaredVersionsIn(source);
+    if (declared.length === 0) {
+      mismatches.push(`${path.basename(file)}: declares no version`);
+      continue;
+    }
+    for (const value of declared) {
+      if (normalizeVersion(value) !== productVersion) {
+        mismatches.push(`${path.basename(file)}: declares ${value}, expected ${productVersion}`);
+      }
+    }
+  }
+  return { productVersion, mismatches };
+}
+
 module.exports = {
   localRequiresOf,
   resolveLocalModule,
   backendModulesOf,
   verifyStagedPayload,
-  verifyBackendSource
+  verifyBackendSource,
+  productVersionOf,
+  declaredVersionsIn,
+  verifySourceVersions
 };

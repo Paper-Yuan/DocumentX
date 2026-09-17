@@ -109,6 +109,19 @@ try {
   }
   console.log(`  -> 依赖校验通过（${verification.jsFiles.length} 个模块，无缺失引用）`);
 
+  // Step 3.6: Refuse to package components that disagree with the product version.
+  console.log('\n[3.6/6] 正在校验版本号一致性...');
+  const versionCheck = payloadCheck.verifySourceVersions({
+    serverJsPath: path.join(HUB_DIR, 'server.js'),
+    csFiles: [launcherCs, uninstallerCs, path.join(INSTALLER_DIR, 'Installer.cs')]
+  });
+  if (versionCheck.mismatches.length > 0) {
+    throw new Error(
+      `以下文件的版本号与 APP_VERSION (${versionCheck.productVersion}) 不一致:\n  - ${versionCheck.mismatches.join('\n  - ')}`
+    );
+  }
+  console.log(`  -> 版本号一致 (${versionCheck.productVersion})`);
+
   // Step 4: Compress into payload.zip
   console.log('\n[4/6] 正在将分发程序包压缩为自解压载荷 (payload.zip)...');
   if (fs.existsSync(PAYLOAD_ZIP)) fs.unlinkSync(PAYLOAD_ZIP);

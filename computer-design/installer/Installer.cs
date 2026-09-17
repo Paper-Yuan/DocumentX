@@ -18,9 +18,9 @@ using Microsoft.Win32;
 [assembly: AssemblyCopyright("Copyright © 2026 SafeDrop")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
-[assembly: AssemblyInformationalVersion("1.0.1")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyInformationalVersion("1.3.0")]
 
 namespace SafeDrop.Setup
 {
@@ -817,7 +817,7 @@ namespace SafeDrop.Setup
                     {
                         key.SetValue("DisplayName", "SafeDrop 局域网高速安全互传");
                         key.SetValue("DisplayIcon", mainExe + ",0");
-                        key.SetValue("DisplayVersion", "1.0.1");
+                        key.SetValue("DisplayVersion", "1.3.0");
                         key.SetValue("Publisher", "SafeDrop Team");
                         key.SetValue("UninstallString", "\"" + uninstallerExe + "\"");
                         key.SetValue("InstallLocation", installDir);

@@ -95,6 +95,74 @@ try {
   fs.rmSync(scratch, { recursive: true, force: true });
 }
 
+console.log('\n3. Component versions agree with APP_VERSION');
+const LAUNCHER_CS = path.resolve(__dirname, '..', '..', 'Launcher.cs');
+const CS_FILES = [LAUNCHER_CS, path.join(__dirname, 'Installer.cs'), path.join(__dirname, 'Uninstaller.cs')];
+
+it('the shipped C# components declare the current product version', () => {
+  // Regression guard: these sat at 1.0.1 for two releases while every other surface moved on,
+  // so the Windows file properties and Programs-and-Features entry reported a stale version.
+  const result = payloadCheck.verifySourceVersions({
+    serverJsPath: path.join(HUB_DIR, 'server.js'),
+    csFiles: CS_FILES
+  });
+  assert.deepStrictEqual(
+    result.mismatches,
+    [],
+    `version drift: ${result.mismatches.join('; ')}`
+  );
+  assert.match(result.productVersion, /^\d+\.\d+\.\d+$/);
+});
+
+const versionScratch = fs.mkdtempSync(path.join(os.tmpdir(), 'safedrop-version-'));
+try {
+
+it('a drifted version literal is detected', () => {
+  const scratchCs = path.join(versionScratch, 'Drifted.cs');
+  fs.writeFileSync(scratchCs, [
+    '[assembly: AssemblyVersion("1.0.1.0")]',
+    '[assembly: AssemblyFileVersion("1.0.1.0")]',
+    '[assembly: AssemblyInformationalVersion("1.0.1")]',
+    'key.SetValue("DisplayVersion", "1.0.1");'
+  ].join('\n'));
+
+  const result = payloadCheck.verifySourceVersions({
+    serverJsPath: path.join(HUB_DIR, 'server.js'),
+    csFiles: [scratchCs]
+  });
+  assert.strictEqual(result.mismatches.length, 4, `expected 4 stale literals, got ${result.mismatches.length}`);
+  assert.ok(result.mismatches.every((m) => m.includes('Drifted.cs')), 'the offending file should be named');
+  assert.ok(result.mismatches.some((m) => m.includes('DisplayVersion') || m.includes('1.0.1')),
+    'the stale version should be shown');
+});
+
+it('a component declaring no version at all is reported', () => {
+  const blankCs = path.join(versionScratch, 'Blank.cs');
+  fs.writeFileSync(blankCs, 'class Blank {}\n');
+  const result = payloadCheck.verifySourceVersions({
+    serverJsPath: path.join(HUB_DIR, 'server.js'),
+    csFiles: [blankCs]
+  });
+  assert.strictEqual(result.mismatches.length, 1);
+  assert.ok(result.mismatches[0].includes('declares no version'));
+});
+
+it('the four-part assembly version matches the three-part product version', () => {
+  // AssemblyVersion carries a trailing build field; comparison must not flag 1.3.0.0 vs 1.3.0.
+  const cs = path.join(versionScratch, 'FourPart.cs');
+  const product = payloadCheck.productVersionOf(path.join(HUB_DIR, 'server.js'));
+  fs.writeFileSync(cs, `[assembly: AssemblyVersion("${product}.0")]\n`);
+  const result = payloadCheck.verifySourceVersions({
+    serverJsPath: path.join(HUB_DIR, 'server.js'),
+    csFiles: [cs]
+  });
+  assert.deepStrictEqual(result.mismatches, [], `unexpected: ${result.mismatches.join('; ')}`);
+});
+
+} finally {
+  fs.rmSync(versionScratch, { recursive: true, force: true });
+}
+
 console.log(`\n====================================================`);
 console.log(`  Passed: ${passed}    Failed: ${failed}`);
 console.log(`====================================================\n`);
