@@ -109,33 +109,58 @@ class MobileTransferServer(
     val deviceId: String = "android-" + (Build.MODEL ?: "dev").replace(" ", "_").lowercase() + "-" + fingerprint.take(6).lowercase()
 
     // Dynamic Pairing Credentials
-    var currentPin: String = (100000 + (Math.random() * 900000).toInt()).toString()
+    var currentPin: String = newPairingPin()
         private set
     var currentToken: String = UUID.randomUUID().toString().substring(0, 12)
         private set
 
-    // Previous credentials stay valid for a short grace window so multi-device pairing
-    // does not require re-entering the code mid-handshake.
-    private var prevPin: String? = null
-    private var prevToken: String? = null
-    private var prevPinTime: Long = 0
-    private val graceWindowMs = 60_000L
+    // Every successful handshake rotates the credentials, so a value that is still on screen
+    // (or in a QR code already being scanned) goes stale the moment any device pairs. Retired
+    // credentials therefore stay accepted for a grace period, and more than one generation is
+    // kept: with a single previous slot, a second pairing inside the window evicted the value
+    // still displayed on this device and the next peer was rejected even though the user had
+    // just read it correctly. The window stays bounded, so this is not an accept-anything path.
+    private val pairingGraceMs = 60_000L
+    private val pairingGraceGenerations = 3
+    /** Retired credentials, newest first: Triple(pin, token, retiredAtMs). */
+    private val retiredCredentialHistory = ArrayDeque<Triple<String, String, Long>>()
 
     fun refreshPairingPin(): Pair<String, String> {
-        prevPin = currentPin
-        prevToken = currentToken
-        prevPinTime = System.currentTimeMillis()
-        currentPin = (100000 + (Math.random() * 900000).toInt()).toString()
-        currentToken = UUID.randomUUID().toString().substring(0, 12)
+        rotateCredentials()
         return Pair(currentPin, currentToken)
     }
+
+    /** Retire the credentials in use, then issue a fresh pair. */
+    private fun rotateCredentials() {
+        val now = System.currentTimeMillis()
+        retiredCredentialHistory.addFirst(Triple(currentPin, currentToken, now))
+        // Drop anything outside the window, then keep only the newest few generations.
+        val fresh = retiredCredentialHistory
+            .filter { now - it.third < pairingGraceMs }
+            .take(pairingGraceGenerations)
+        retiredCredentialHistory.clear()
+        retiredCredentialHistory.addAll(fresh)
+
+        currentPin = newPairingPin()
+        currentToken = UUID.randomUUID().toString().substring(0, 12)
+    }
+
+    /**
+     * A six-digit pairing code. Drawn from SecureRandom rather than Math.random(): the code is
+     * an authorization factor, and a predictable generator would let an observer who can
+     * reconstruct its state anticipate the value the user is about to read off the screen.
+     */
+    private fun newPairingPin(): String = (100_000 + secureRandom.nextInt(900_000)).toString()
 
     /** Candidate secrets accepted by the handshake, including the recent grace window. */
     private fun pairingSecretCandidates(): List<String> {
         val now = System.currentTimeMillis()
         val candidates = mutableListOf(currentPin, currentToken)
-        if (prevPin != null && now - prevPinTime < graceWindowMs) candidates.add(prevPin!!)
-        if (prevToken != null && now - prevPinTime < graceWindowMs) candidates.add(prevToken!!)
+        for ((pin, token, retiredAt) in retiredCredentialHistory) {
+            if (now - retiredAt >= pairingGraceMs) continue
+            candidates.add(pin)
+            candidates.add(token)
+        }
         return candidates
     }
 
