@@ -446,8 +446,10 @@ function upsertOrMergeDevice(data) {
   return newDev;
 }
 
-// Transfer history record store
+// Transfer history record store. Bounded like chatMessages below: this array is serialised into
+// every /api/v1/files/list response, so an uncapped one grows for as long as the hub runs.
 const transferHistory = [];
+const TRANSFER_HISTORY_LIMIT = 200;
 // Chat & instant transfer timeline messages store
 const chatMessages = [];
 
@@ -623,6 +625,9 @@ function handleEncryptedChunk(ctx) {
       count: totalChunks,
       chunkSize,
       received: new Map(),
+      // Chunks whose write has actually completed. `received.size` alone cannot answer that,
+      // because an index is recorded before its write finishes (see finish() below).
+      written: 0,
       lastSeen: Date.now()
     };
     activeTransfers.set(key, task);
@@ -680,15 +685,25 @@ function handleEncryptedChunk(ctx) {
         return fail(409, `Chunk ${chunkIndex} was already sent with different content`);
       }
 
+      // Claim the index before the write rather than after it. Two requests for one index can
+      // both get this far while the first is still inside fs.write, and without the claim the
+      // second is judged against a record the first has not made yet - so one index can be
+      // "accepted twice with different content", and whichever write lands last decides what the
+      // file holds. The claim is taken back if the write fails.
+      task.received.set(chunkIndex, { digest, length: payload.length });
+
       writeChunkAtPosition(task.partPath, payload, chunkIndex * chunkSize, (writeError) => {
         if (writeError) {
+          task.received.delete(chunkIndex);
           discardTransfer(key, task, 'write failed');
           return fail(507, `Failed to store chunk ${chunkIndex}: ${writeError.message}`);
         }
-        task.received.set(chunkIndex, { digest, length: payload.length });
-        // Indices are validated against count and are unique in this map, so a full map can only
-        // hold 0..count-1 - which is what makes the size below trustworthy.
-        if (task.received.size < totalChunks) return respondProgress();
+        task.written += 1;
+        // Completion is decided on chunks that are on disk, not merely claimed: renaming the
+        // .part while the final write is still in it would save a file with a hole where that
+        // chunk should be. Indices are validated against count and are unique in this map, so a
+        // full set is exactly 0..count-1 - which is what makes the size derived below sound.
+        if (task.written < totalChunks) return respondProgress();
         completeTransfer();
       });
     };
@@ -712,7 +727,7 @@ function handleEncryptedChunk(ctx) {
       code: 0,
       chunk_index: chunkIndex,
       total_chunks: totalChunks,
-      chunks_received: task.received.size,
+      chunks_received: task.written,
       status: 'chunk_received',
       compressed: isCompressed,
       encrypted: true
@@ -758,6 +773,7 @@ function handleEncryptedChunk(ctx) {
         compressed: isCompressed,
         time: new Date().toLocaleTimeString()
       });
+      if (transferHistory.length > TRANSFER_HISTORY_LIMIT) transferHistory.length = TRANSFER_HISTORY_LIMIT;
       console.log(`[SafeDrop] File successfully saved to vault: ${finalPath}${isCompressed ? ' (decompressed)' : ''} (decrypted)`);
       answered = true;
       jsonResponse(res, 200, {
@@ -1394,6 +1410,7 @@ function handleApi(pathname, req, res, urlObj) {
             compressed: isCompressed,
             time: new Date().toLocaleTimeString()
           });
+          if (transferHistory.length > TRANSFER_HISTORY_LIMIT) transferHistory.length = TRANSFER_HISTORY_LIMIT;
           console.log(`[SafeDrop] File successfully saved to vault: ${finalPath}${isCompressed ? ' (decompressed)' : ''}${isEncrypted ? ' (decrypted)' : ''}`);
           respond({ file_name: finalName, file_size: actualSize });
         });

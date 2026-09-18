@@ -604,6 +604,45 @@ async function main() {
   // Sections 5-6 run here, before the rate-limit test, because that test deliberately locks
   // out this source IP for five minutes and every later handshake would return 429.
   // ---------------------------------------------------------------------------
+  console.log('\n▶ Section 4b: endpoints that read or write user state');
+  // The file endpoints were the first to be guarded, and asserting only those would leave the
+  // rest unguarded again the next time somebody adds one - device names were exactly the ones
+  // still open to an unpaired host on the LAN.
+  const fakeFingerprint = 'probefingerprint0001';
+  const namePath = `/api/v1/devices/names/${fakeFingerprint}`;
+  const putName = await request('PUT', namePath, {
+    headers: { 'Content-Type': 'application/json', 'X-Session-Id': paired.sessionId },
+    body: JSON.stringify({ customName: 'probe-name' })
+  });
+  const anonDelete = await request('DELETE', namePath);
+  const anonSend = await request('POST', '/api/v1/message/send', {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'from an unpaired host', peerId: 'probe-peer', senderName: 'probe' })
+  });
+  const anonList = await request('GET', '/api/v1/messages/list?peerId=probe-peer');
+  const namesBeforeDelete = json(await request('GET', '/api/v1/devices/names', {
+    headers: { 'X-Session-Id': paired.sessionId }
+  }));
+  check('unpaired hosts cannot send, read or wipe anything', () => {
+    assert.strictEqual(putName.status, 200, `the sessioned PUT should work, got ${putName.status}`);
+    assert.strictEqual(anonSend.status, 401, `message/send: ${anonSend.status}`);
+    assert.strictEqual(anonList.status, 401, `messages/list: ${anonList.status}`);
+    assert.strictEqual(anonDelete.status, 401, `devices/names DELETE: ${anonDelete.status}`);
+  });
+  check('a refused delete leaves the stored name alone', () => {
+    assert.strictEqual(namesBeforeDelete.deviceNames[fakeFingerprint], 'probe-name',
+      `unpaired DELETE took effect: ${JSON.stringify(namesBeforeDelete)}`);
+  });
+  const sessionedDelete = await request('DELETE', namePath, { headers: { 'X-Session-Id': paired.sessionId } });
+  const namesAfterDelete = json(await request('GET', '/api/v1/devices/names', {
+    headers: { 'X-Session-Id': paired.sessionId }
+  }));
+  check('a paired session can undo it', () => {
+    assert.strictEqual(sessionedDelete.status, 200, `expected 200, got ${sessionedDelete.status}`);
+    assert.strictEqual(namesAfterDelete.deviceNames[fakeFingerprint], undefined,
+      'the name survived a sessioned delete');
+  });
+
   console.log('\n▶ Section 5: pairing-secret rotation grace');
   // The hub rotates PIN and token on every successful handshake while the desktop UI refreshes
   // on a timer. When the retired credentials were stored in a single slot, a second pairing
@@ -926,6 +965,88 @@ async function main() {
     assert.ok(portalStatuses.every((s) => s === 200), `statuses: ${portalStatuses.join(',')}`);
     const stored = fs.readFileSync(path.join(VAULT_DIR, 'from_portal.bin'));
     assert.ok(stored.equals(fileBytes), `stored ${stored.length} bytes differ from the 1320 sent`);
+  });
+
+  // Every rule above is asserted one request at a time. The receiver's guarantees are made across
+  // requests, so they also have to hold when two of them are in flight together - which is what a
+  // client that retries after a dropped response actually does.
+  console.log('\n▶ Section 11: chunks that arrive at the same time');
+  const raceStride = 4096;
+  const raceA = Buffer.concat([Buffer.from('AAAA'), crypto.randomBytes(raceStride - 4)]);
+  const raceB = Buffer.concat([Buffer.from('BBBB'), crypto.randomBytes(raceStride - 4)]);
+
+  const raceSend = (taskId, index, count, payload, name, size) => request('POST', '/api/v1/transfer/upload', {
+    headers: Object.assign({
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(name),
+      'X-File-Size': String(size),
+      'X-Encrypted': '1',
+      'X-Session-Id': paired.sessionId
+    }, chunkHeaders(taskId, index, count, raceStride)),
+    body: sealChunk(paired.key, payload, taskId, index, count, raceStride)
+  });
+
+  const creationTask = `task_creation_${Date.now()}`;
+  const creation = await Promise.all([
+    raceSend(creationTask, 0, 2, raceA, 'concurrent_creation.bin', raceStride * 2),
+    raceSend(creationTask, 1, 2, raceA, 'concurrent_creation.bin', raceStride * 2)
+  ]);
+  check('two chunks that both find no .part still produce the whole file', () => {
+    assert.ok(creation.every((r) => r.status === 200), `statuses: ${creation.map((r) => r.status).join(',')}`);
+    const stored = fs.readFileSync(path.join(VAULT_DIR, 'concurrent_creation.bin'));
+    assert.strictEqual(stored.length, raceStride * 2, `stored ${stored.length} bytes`);
+    assert.ok(stored.equals(Buffer.concat([raceA, raceA])), 'content differs');
+  });
+
+  const clashTask = `task_clash_${Date.now()}`;
+  const clash = await Promise.all([
+    raceSend(clashTask, 0, 2, raceA, 'concurrent_clash.bin', raceStride * 2),
+    raceSend(clashTask, 0, 2, raceB, 'concurrent_clash.bin', raceStride * 2)
+  ]);
+  const clashFirst = clash.findIndex((r) => r.status === 200);
+  const clashTail = await raceSend(clashTask, 1, 2, raceA, 'concurrent_clash.bin', raceStride * 2);
+  check('one index cannot be accepted twice with different content', () => {
+    assert.strictEqual(clashFirst, 0, `expected exactly one acceptance, got ${clash.map((r) => r.status).join('/')}`);
+    assert.strictEqual(clash[1].status, 409, `the conflicting chunk was accepted: ${clash[1].status}`);
+  });
+  check('the saved file is made of the chunks that were accepted, not the ones refused', () => {
+    assert.strictEqual(clashTail.status, 200, `final chunk: ${clashTail.status} ${clashTail.body.toString('utf8')}`);
+    const stored = fs.readFileSync(path.join(VAULT_DIR, 'concurrent_clash.bin'));
+    assert.strictEqual(stored.length, raceStride * 2, `stored ${stored.length} bytes`);
+    assert.ok(stored.equals(Buffer.concat([raceA, raceA])),
+      `stored chunk 0 is ${stored.subarray(0, 4).toString('utf8')}, but ${clashFirst === 0 ? 'AAAA' : 'BBBB'} was the accepted copy`);
+  });
+
+  const geometryCases = [
+    ['a chunk count above the protocol cap', 0, 1000001, 16],
+    ['an index equal to the chunk count', 1, 1, 16],
+    ['a zero stride', 0, 1, 0],
+    ['a stride above the sealed-chunk cap', 0, 1, 67108865]
+  ];
+  const geometryResults = [];
+  for (const [label, idx, count, size] of geometryCases) {
+    const badTask = `task_geom_${Date.now()}_${idx}_${count}`;
+    // Seal with a legal geometry and send the headers the attack claims: the receiver has to
+    // refuse on its own reading of the numbers, not because the sender agreed with it.
+    const res = await request('POST', '/api/v1/transfer/upload', {
+      headers: Object.assign({
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(`geom_${geometryResults.length}.bin`),
+        'X-Encrypted': '1',
+        'X-Session-Id': paired.sessionId
+      }, chunkHeaders(badTask, idx, count, size)),
+      body: sealChunk(paired.key, Buffer.from('0123456789abcdef'), badTask, 0, 1, 16)
+    });
+    geometryResults.push({ label, status: res.status });
+  }
+  check('impossible chunk geometry is refused before anything is stored', () => {
+    for (const r of geometryResults) {
+      assert.strictEqual(r.status, 400, `${r.label}: expected 400, got ${r.status}`);
+    }
+  });
+  check('a refused chunk leaves neither a file nor a .part behind', () => {
+    const leftovers = fs.readdirSync(VAULT_DIR).filter((n) => n.startsWith('geom_') || n.includes('task_geom_'));
+    assert.deepStrictEqual(leftovers, [], `left on disk: ${leftovers.join(', ')}`);
   });
 
   shutdown();

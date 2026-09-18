@@ -86,7 +86,10 @@ still carried a valid tag per chunk.
   compared against the declared `X-File-Size`, and a mismatch is rejected rather than saved.
 - **Retries are idempotent, conflicting retries are refused.** Re-sending the identical chunk after
   a dropped response is accepted and changes nothing; sending different bytes for an index already
-  stored returns 409, and so does a second peer claiming the same task id.
+  stored returns 409, and so does a second peer claiming the same task id. An index is claimed
+  before its write starts rather than after it, so this holds when a retry and the original are in
+  flight together rather than one after the other — otherwise the refused copy is the one whose
+  bytes end up in the file.
 - **A finished file is exactly as long as its chunks add up to.** Positional writing guarantees the
   bytes it wrote and nothing more, so a `.part` left behind by an earlier attempt at the same task
   id — which survives a hub restart, since only the bookkeeping lived in memory — would have had its
@@ -119,6 +122,9 @@ still carried a valid tag per chunk.
   different versions already failed each other's proof — but at `/handshake/verify`, which the UI
   reports as "pairing rejected, check the code". Every client now compares the marker the peer
   declares in its handshake response and names the version instead.
+- **The transfer history list is bounded.** It had no cap and is serialised into every file-list
+  response, so a hub left running for weeks grew one record and one payload byte per transfer,
+  forever. Now the newest 200, matching the limit chat already had.
 
 ### 🔧 Added — One contract file, generated constants, and CI that can actually fail
 
@@ -139,10 +145,12 @@ ends drifted apart in the first place.
   byte — including the ten negative cases (geometry rewrites, tag flip, ciphertext change, nonce
   swap).
 - **A real test suite for the parts that had none.** `node --test "test/*.test.js"` runs 23 tests
-  over the crypto protocol and the relay guard, and `test_encryption_e2e.js` grew from 37 to 52
+  over the crypto protocol and the relay guard, and `test_encryption_e2e.js` grew from 37 to 60
   checks — including one that extracts the portal's `SafeDropCrypto` from `portal.html`, executes
-  it verbatim in Node against the live hub, and uploads a 21-chunk file at a 64-byte stride. The
-  Kotlin suite runs 14 unit tests against the same vectors.
+  it verbatim in Node against the live hub, and uploads a 21-chunk file at a 64-byte stride; a
+  section that races two chunks against each other; and one that proves an unpaired host can
+  neither read, write nor wipe device names and chat history. The Kotlin suite runs 14 unit tests
+  against the same vectors.
 - **CI gates on all of it.** `test-desktop` was a syntax check; it now runs the protocol check, the
   vector reproducibility check, the `node:test` suite and three end-to-end suites on Node 22, next
   to the version-consistency job. `test-android` printed "✅ Android project structure validated"
