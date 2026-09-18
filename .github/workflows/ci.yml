@@ -17,14 +17,31 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '22'
         
-    - name: Test Node.js Backend
+    - name: Syntax check every backend and UI script
       run: |
-        cd computer-design/desktop_hub
         node --version
-        node -c server.js
-        echo "✅ Node.js backend syntax check passed"
+        for file in computer-design/desktop_hub/*.js computer-design/desktop_hub/public/*.js scripts/*.js; do
+          node --check "$file"
+        done
+
+    - name: Verify the protocol contract and its generated files
+      run: |
+        node scripts/protocol.js check
+        node scripts/gen-vectors.js --check
+
+    - name: Run unit tests
+      run: node --test test/*.test.js
+
+    - name: Run the transport encryption end-to-end suite
+      run: node test_encryption_e2e.js
+
+    - name: Run the relay and portal security suite
+      run: node test_qr_and_security.js
+
+    - name: Run the multi-device and portal suite
+      run: node test_multi_device_and_portal.js
         
   test-android:
     name: Test Android
@@ -41,12 +58,29 @@ jobs:
         
     - name: Validate Gradle wrapper
       uses: gradle/wrapper-validation-action@v1
-      
-    - name: Run Gradle tasks
-      run: |
-        cd android-design/com
-        # Note: Actual build would require full Android SDK
-        echo "✅ Android project structure validated"
+
+    # The project only commits the Windows wrapper script, so CI drives Gradle directly at the
+    # version gradle-wrapper.properties pins rather than inventing a wrapper on the fly.
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: '8.5'
+
+    # The unit tests read test/vectors/e2e-v2.json, which scripts/gen-vectors.js writes from the
+    # Node implementation, so a green run here means the two implementations agree byte for byte.
+    # That only holds while CI actually runs them, which is the whole point of this job.
+    - name: Run the crypto unit tests against the shared golden vectors
+      timeout-minutes: 25
+      working-directory: android-design/com
+      run: gradle --no-daemon testDebugUnitTest
+
+    - name: Upload the test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-unit-tests
+        path: android-design/com/app/build/test-results/testDebugUnitTest/*.xml
+        if-no-files-found: error
         
   lint-kotlin:
     name: Lint Kotlin Code
@@ -72,3 +106,18 @@ jobs:
         test -f README.md && echo "✅ README.md exists"
         test -f LICENSE && echo "⚠️  LICENSE recommended" || true
         test -f CHANGELOG.md && echo "✅ CHANGELOG.md exists" || true
+
+  check-version:
+    name: Version Consistency
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Assert all version strings agree with the hub's APP_VERSION
+      run: node scripts/version-check.js

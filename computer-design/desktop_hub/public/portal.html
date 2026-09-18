@@ -884,10 +884,11 @@
        *
        * The pairing PIN (or QR token) is used locally as HKDF input and proven with an HMAC;
        * it is never sent to the hub. Uploaded chunks are sealed with AES-256-GCM using a
-       * fresh random nonce, with the task id and chunk index bound in as AAD.
+       * fresh random nonce, with the task id, chunk index, chunk count and slice size bound in as
+       * AAD so a chunk cannot be moved, duplicated, or completed early.
        */
       const SafeDropCrypto = (() => {
-        const PROTOCOL = 'safedrop-e2e-v1';
+        const PROTOCOL = 'safedrop-e2e-v2';
         const NONCE_LEN = 12;
         const TAG_LEN = 16;
         const enc = new TextEncoder();
@@ -982,11 +983,17 @@
           return crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
         }
 
-        /** Seal one chunk: nonce(12) || ciphertext || tag(16). */
-        async function encryptChunk(keyBytes, data, taskId, chunkIndex) {
+        /**
+         * Seal one chunk: nonce(12) || ciphertext || tag(16).
+         *
+         * index, count and chunkSize are bound into the AAD alongside the task id, so the receiver
+         * can tell a genuine chunk from one whose "how many are there" header was rewritten on the
+         * wire. chunkSize is the sender's slice size, i.e. the stride between chunk offsets.
+         */
+        async function encryptChunk(keyBytes, data, taskId, index, count, chunkSize) {
           const key = await importAesKey(keyBytes);
           const nonce = crypto.getRandomValues(new Uint8Array(NONCE_LEN));
-          const aad = enc.encode(`${PROTOCOL}|chunk|${taskId}|${chunkIndex}`);
+          const aad = enc.encode(`${PROTOCOL}|chunk|${taskId}|${index}|${count}|${chunkSize}`);
           const sealed = new Uint8Array(await crypto.subtle.encrypt(
             { name: 'AES-GCM', iv: nonce, additionalData: aad, tagLength: 128 },
             key,
@@ -1133,6 +1140,12 @@
           });
           if (!initRes.ok) throw new Error(`handshake/init HTTP ${initRes.status}`);
           const initData = await initRes.json();
+
+          // The version marker is hashed into the key derivation, so a hub on another version would
+          // fail the proof two steps below and look like a mistyped pairing code. Say what it is.
+          if (initData.protocol !== SafeDropCrypto.PROTOCOL) {
+            throw new Error(`对端传输协议为 ${initData.protocol || '未知'}，本页面为 ${SafeDropCrypto.PROTOCOL}，请升级其中一端`);
+          }
 
           // b. Derive the session key locally; the secret never leaves this browser
           const shared = await SafeDropCrypto.deriveSharedSecret(pair, SafeDropCrypto.fromHex(initData.server_public_key));
@@ -1311,7 +1324,9 @@
               session.key,
               new Uint8Array(await chunkBlob.arrayBuffer()),
               taskId,
-              idx
+              idx,
+              totalChunks,
+              CHUNK_SIZE
             );
 
             const res = await fetch('/api/v1/transfer/upload', {
@@ -1323,6 +1338,7 @@
                 'X-File-Size': file.size.toString(),
                 'X-Chunk-Index': idx.toString(),
                 'X-Chunk-Count': totalChunks.toString(),
+                'X-Chunk-Size': CHUNK_SIZE.toString(),
                 'X-Encrypted': '1'
               }),
               body: sealedBlob

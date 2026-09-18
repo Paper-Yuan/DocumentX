@@ -1,0 +1,98 @@
+{
+  "_comment": [
+    "Single source of truth for every value two or more implementations must agree on.",
+    "node scripts/protocol.js gen writes desktop_hub/protocol.gen.js (Node) and",
+    "android .../core/crypto/ProtocolConst.kt (Kotlin) from this file; node scripts/protocol.js check",
+    "regenerates them in memory and fails on any difference, additionally asserting that the",
+    "hand-written browser literals (public/app.js, public/portal.html and its byte-identical copy in",
+    "the Android assets) still match, because a self-contained portal page cannot import a module.",
+    "",
+    "Only interop-critical values belong here. Single-implementation tuning (the Android socket read",
+    "timeout, the hub's device-expiry timer, each sender's preferred chunk size) stays where it is",
+    "used - listing values nobody reads would be documentation theatre, not a contract.",
+    "",
+    "Changing anything under 'crypto' or 'headers' changes the wire format: bump 'protocol' as well.",
+    "The marker is not a mere label - it is hashed into the KDF salt and info and into both pairing",
+    "proofs - so two peers on different versions derive different keys and fail each other's proof at",
+    "/handshake/verify. Each client also compares the marker the peer declares in that response, which",
+    "turns the same mismatch into a readable 'wrong version' message instead of a wrong-PIN error."
+  ],
+
+  "crypto": {
+    "protocol": "safedrop-e2e-v2",
+    "keyLenBytes": 32,
+    "nonceLenBytes": 12,
+    "tagLenBytes": 16,
+    "tagLenBits": 128,
+    "hkdfHash": "SHA-256",
+    "templates": {
+      "kdfSalt": "{protocol}|salt|{sessionId}",
+      "kdfInfo": "{protocol}|key|{pairingSecret}",
+      "clientProof": "{protocol}|verify|{sessionId}",
+      "serverProof": "{protocol}|server|{sessionId}",
+      "chunkAad": "{protocol}|chunk|{taskId}|{index}|{count}|{chunkSize}"
+    },
+    "curves": {
+      "x25519": { "rawLenBytes": 32, "opensslName": "x25519", "spkiPrefixHex": "302a300506032b656e032100" },
+      "p-256": { "rawLenBytes": 65, "opensslName": "prime256v1", "spkiPrefixHex": "3059301306072a8648ce3d020106082a8648ce3d030107034200" }
+    }
+  },
+
+  "chunking": {
+    "_comment": "The sealed packet is nonce || ciphertext || tag. The receiver takes chunkSize and count from inside the AAD, not from a header it has to trust: a header that is not authenticated can be rewritten by anything on the path, which is exactly how an early-finalize or a truncated file becomes invisible.",
+    "sealedOverheadBytes": 28,
+    "maxSealedChunkBytes": 67108864,
+    "maxChunksPerTask": 1000000,
+    "preferredChunkSizeBytes": {
+      "_comment": "Tuning only, deliberately not asserted equal. Unifying them is a benchmark question (peak memory scales with chunk size x concurrency), and picking a number without measuring it is how the 1MB-to-4MB change ended up applied to one client out of four.",
+      "desktop": 4194304,
+      "android": 1048576,
+      "portal": 1048576
+    }
+  },
+
+  "pairing": {
+    "_comment": "Both ends implement this state machine separately, and every field that has been changed on one side only is in git history: the PIN entropy source (a7579df), the grace window (aca8139). The rate limiter exists on the hub as a window plus a block; Android previously counted failures forever.",
+    "pinDigits": 6,
+    "pinMin": 100000,
+    "pinMaxExclusive": 1000000,
+    "tokenHexBytes": 6,
+    "graceMs": 60000,
+    "graceGenerations": 3,
+    "maxFailures": 8,
+    "failureWindowMs": 300000,
+    "blockMs": 300000
+  },
+
+  "session": {
+    "_comment": "Idle-based with an absolute cap. Measuring from creation instead of last activity dropped sessions mid-transfer, which is why a hard ten-minute limit is not what either end should implement.",
+    "idleTtlMs": 600000,
+    "maxTtlMs": 43200000
+  },
+
+  "discovery": {
+    "udpPort": 8890,
+    "beaconIntervalMs": 3000
+  },
+
+  "transport": {
+    "hubPort": 8899,
+    "hubTlsPortDelta": 1,
+    "headers": {
+      "taskId": "X-Task-Id",
+      "fileName": "X-File-Name",
+      "fileSize": "X-File-Size",
+      "chunkIndex": "X-Chunk-Index",
+      "chunkCount": "X-Chunk-Count",
+      "chunkSize": "X-Chunk-Size",
+      "encrypted": "X-Encrypted",
+      "compressed": "X-Compressed",
+      "originalSize": "X-Original-Size",
+      "sessionId": "X-Session-Id",
+      "targetIp": "X-Target-Ip",
+      "targetPort": "X-Target-Port",
+      "targetName": "X-Target-Name",
+      "targetSessionId": "X-Target-Session-Id"
+    }
+  }
+}

@@ -71,15 +71,15 @@ android-design/
 
 ## 三、 传输加密
 
-与桌面端 [`crypto_protocol.js`](file:///e:/Workbox/DocumentX/computer-design/desktop_hub/crypto_protocol.js) 逐字段对齐，二者必须保持一致才能互通。
+与桌面端 [`crypto_protocol.js`](file:///e:/Workbox/DocumentX/computer-design/desktop_hub/crypto_protocol.js) 逐字段对齐，二者必须保持一致才能互通。跨端常量不再手抄：两端都从仓库根目录的 `protocol.json` 取（本机读 `core/crypto/ProtocolConst.kt`，由 `node scripts/protocol.js gen` 生成），`node scripts/protocol.js check` 会在 CI 里盯住任何单方面改动。
 
 | 环节 | 实现 |
 |:---|:---|
 | 密钥协商 | 每次连接生成临时 X25519 密钥对（ECDH），具备前向保密 |
-| 会话密钥 | HKDF-SHA256；salt = `SHA-256("safedrop-e2e-v1\|salt\|" + sessionId)`，info = `"safedrop-e2e-v1\|key\|" + 配对凭据` |
+| 会话密钥 | HKDF-SHA256；salt = `SHA-256("safedrop-e2e-v2\|salt\|" + sessionId)`，info = `"safedrop-e2e-v2\|key\|" + 配对凭据` |
 | 配对凭据 | 6 位 PIN 或二维码 token，**只在本机作为 HKDF 输入**，通过 HMAC 证明双方派生一致，不上网 |
 | 分块封装 | `nonce(12) \|\| ciphertext \|\| tag(16)`，nonce 由 `SecureRandom` 每次生成 |
-| 完整性 | 以 task id 与分块序号作为 GCM AAD，因此重排或跨文件拼接都会导致验签失败 |
+| 完整性 | 以 task id、分块序号、分块总数与步长作为 GCM AAD，因此重排、跨文件拼接、以及改动"这份文件一共多少块/步长多大"都会导致验签失败 |
 | 手机间传输 | 发送方与目标手机直接协商会话，桌面 hub 仅转发密文，不持有该密钥 |
 
 **关于手机间传输**：目标为另一台手机时，hub 没有该手机的密钥，因此发送方会自行与目标完成握手（复用扫码/PIN 配对得到的凭据），再让 hub 转发已封装的分块。接收端用它与发送方协商出的密钥解密。这样即便中经桌面端，文件内容对 hub 仍不可见。

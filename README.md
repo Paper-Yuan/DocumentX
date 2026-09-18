@@ -51,12 +51,12 @@ SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有�
 这些是当前代码里真实存在、且经过验证的设计点：
 
 - **零配置发现** — 桌面端每 3 秒向本网段定向广播地址发送 UDP beacon，手机端通过 `MulticastLock` 接收；同时过滤 Clash / TAP / TUN / vEthernet 等虚拟网卡，避免多网卡环境下出现幻影设备。
-- **无需安装的接入端** — Web 门户是服务端直出的一个页面，手机、平板、Mac、Linux、智能电视只要能开浏览器就能收发文件，不需要装任何东西。
+- **无需安装的接入端** — Web 门户是服务端直出的一个页面，手机、平板、Mac、Linux、智能电视只要能开浏览器就能收发文件，不需要装任何东西（前提是走 `https://` 并接受自签名证书，见「安全边界」）。
 - **后端零依赖** — 只用 Node.js 标准库（`http`/`https`/`dgram`/`crypto`/`zlib`），没有 `node_modules`，启动快、体积小、审计面窄。
-- **端到端载荷加密** — 每个分块以 AES-256-GCM 封装，随机 96 位 nonce，并把 task id 与分块序号作为 AAD 绑定，因此无法重排、无法跨文件拼接、篡改必被拒绝。
+- **端到端载荷加密** — 每个分块以 AES-256-GCM 封装，随机 96 位 nonce，并把 task id、分块序号、总块数与发送端步长一起作为 AAD 绑定：跨文件拼接、改动内容、改动序号、以及改写"这份文件一共几块"来提前定稿都会被认证拒掉。
 - **手机直连手机** — 手机之间由发送方直接与目标协商会话，hub 只转发密文，因此即便经过桌面端中转，内容对 hub 也不可见。
-- **配对凭据不上网** — PIN / token 只在本机作为 HKDF 输入，通过 HMAC 双向证明密钥一致，被动抓包者拿不到密钥。
-- **分块流式传输** — 上传按分块 + `.part` 临时文件拼接后原子改名，大文件不会整包读进内存；桌面端分块 4 MB，Android 端 1 MB。
+- **配对凭据不上网** — PIN / token 只在本机作为 HKDF 输入，通过 HMAC 双向证明密钥一致，被动抓包者拿不到密钥（但 6 位 PIN 的熵有限，边界见下节）。
+- **分块传输与重组** — 每个分块按 `序号 × 步长` 定位写入 `.part`，收齐认证过的全部块才改名落盘；整个文件不会一次性读进内存，但每个分块是在内存里解密的，峰值内存与分块大小和并发数成正比。桌面端步长 4 MB，Android 端与 Web 门户 1 MB（这个不一致是已知待办，步长本身已进 AAD，所以两端不同不会破坏认证）。
 - **传输队列与并发** — 最多 3 个文件并发传输，其余进入队列，UI 上显示队列位置，单个任务失败不影响其它任务。
 - **可选的 gzip 压缩** — 对文本类、体积 ≥ 1 MB 的常见可压缩格式自动启用（客户端 `CompressionStream`，服务端 `zlib` 解压），可在设置里关闭。
 - **自签名 HTTPS 门户** — 纯 Node 生成并缓存 P-256 自签名证书（含 IP SAN），让浏览器进入安全上下文，从而能使用 WebCrypto 加密上传。
@@ -97,9 +97,10 @@ SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有�
 |:---|:---|
 | `SafeDrop-Setup-1.3.0.exe` | Windows 单文件自解压安装包，内置便携 Node 运行时，双击即可安装，无需另外装 Node.js |
 | `SafeDrop-Android-1.3.0.apk` | Android 接收端，需允许"安装未知来源应用" |
-| `SHA256SUMS.txt` | 上述两个产物的 SHA-256 校验值 |
 
-> ⚠️ **桌面端与 Android 端必须同为 v1.3.0。** v1.3.0 起桌面端会拒绝未建立加密握手会话的上传（HTTP 401），旧版 APK（1.0.2 等）没有握手逻辑，连接会直接失败。这是有意为之：宁可失败也不静默退化成明文传输。
+> 校验值：Release 流程目前**还不产出** `SHA256SUMS.txt`，所以别去下载它；补齐自动生成是发布流水线的待办项。
+
+> ⚠️ **两端必须实现同一版传输协议：`safedrop-e2e-v2`。** 这个标记由 `protocol.json` 单一来源规定，握手不匹配会被直接拒绝；已发布的 1.3.0 客户端说的是 `safedrop-e2e-v1`，连不上当前代码。桌面端还会拒绝未建立加密握手会话的上传（HTTP 401），也拒绝"已配对但不加密"的上传（HTTP 400）——明文上传只对本机回环开放，两端同规则。旧版 APK（1.0.2 等）没有握手逻辑，同样直接失败。这是有意为之：宁可失败也不静默退化成明文或旧帧格式。
 >
 > ⚠️ Android 包使用调试密钥签名（`CN=Android Debug`）。它足够用于自用与内部分发，但**不是**发布到应用商店的签名；同一设备上后续版本必须用同一密钥签名才能覆盖安装。
 >
@@ -221,20 +222,22 @@ SafeDrop 的定位是**局域网内的加密传输**：载荷已加密，但配�
 
 | 机制 | 说明 |
 |:---|:---|
-| 载荷加密 | 每个分块以 AES-256-GCM 封装后传输，服务端验签通过才落盘；篡改或错序的分块会被直接拒绝 |
+| 载荷加密 | 每个分块以 AES-256-GCM 封装后传输，服务端验签通过才落盘。AAD 绑定 `taskId / 序号 / 总块数 / 步长`，所以被改动、被搬到别的任务或别的位置、以及改写头部里"一共几块"来提前定稿的块都会被拒 |
+| 完整性判定 | 接收端把每块按 `序号 × 步长` 定位写入 `.part`，只有收齐 0..count-1 全部块、且落盘字节数与块流推导出的大小一致时才改名落盘（改名前把 `.part` 截到该大小，避免上一次中断留下的更长 `.part` 把尾巴混进新文件）；同一块重复到达且字节相同是幂等的，内容不同则拒绝。缺块的文件永远不会有"完成"状态，也不会出现在仓库列表里 |
 | 手机 → 手机 | 发送方直接与目标手机协商独立会话，hub 只转发密文、不参与解密，因此端到端加密成立 |
 | 会话密钥协商 | 每次连接生成临时 X25519 密钥对，经 HKDF-SHA256 派生会话密钥，具备前向保密 |
 | 配对凭据不入网 | 6 位 PIN / 一次性 token 不发送给服务端，只作为 HKDF 输入，并用 HMAC 证明双方派生出同一密钥 |
-| 双向身份确认 | 服务端返回自身证明，客户端校验通过后才认为配对成功，可发现冒充者 |
+| 双向身份确认 | 服务端返回自身证明，客户端校验通过后才认为配对成功。它证明的是"对方知道当前 PIN"，因此能发现不知道 PIN 的冒充者；拿到同一 PIN 的 evil-twin hub 无法被区分（PIN 之外没有身份锚点，见「未提供」） |
 | 配对尝试限流 | 同一来源 IP 连续 8 次配对失败后封禁 5 分钟，抑制在线穷举 |
-| 端口隔离 | 文件列表与下载等接口要求已验证会话；配对 PIN 仅对本机回环请求下发，不广播给局域网 |
-| 转发目标校验 | 仅允许中继到 RFC1918 私网地址，或与本机同一网段的对端（因此非标准网段也能开箱即用）；回环、链路本地（含云元数据 `169.254.169.254`）与公网地址一律拒绝。跨网段可用 `SAFEDROP_RELAY_TARGETS` 显式放行 |
-| 输入处理 | 文件名做非法字符清洗；JSON 请求体上限 4 MB |
+| 接口鉴权 | 文件列表、下载、消息收发与设备名增删改等接口都要求已验证会话，未配对一律返回 401（含 `/api/v1/message/send`、`/api/v1/messages/list`、`DELETE /api/v1/devices/names/:fp`）；`/api/v1/settings/*` 只接受本机回环；跨源响应只回显本机与私网来源，不再对任意网页开放 `*`；配对 PIN 仅对本机回环请求下发，不广播给局域网 |
+| 转发目标校验 | 仅允许中继到 RFC1918 私网地址，或与本机同一网段的对端（因此非标准网段也能开箱即用）；回环、链路本地（含云元数据 `169.254.169.254`）与公网地址一律拒绝；地址只接受规范点分十进制，`010.x` 这类前导零写法直接拒（此处按十进制解释、解析器按八进制解释会造成"放行一个地址、连到另一个地址"）。跨网段可用 `SAFEDROP_RELAY_TARGETS` 显式放行 |
+| 输入处理 | 文件名做非法字符清洗；JSON 请求体上限 4 MB；单个密封分块上限 64 MB（两者都写进 `protocol.json`） |
 
 ### 未提供（请勿依赖）
 
 - **桌面端自身与 hub 之间是明文 HTTP。** 本机回环通信不加密，这是速度与复杂度的取舍；如果你在同一台机器上运行不受信任的进程，它可以看到这些流量。
-- **服务端不强制校验配对。** 配对由客户端（桌面 UI / Web 门户）把关；能直接访问接口的调用方仍可提交请求，所以它防的是误连和被动窃听，不是有意攻击者的主动绕过。
+- **服务端强制的是"已配对"，不是"是谁"。** 文件与消息接口都要求已验证会话，但会话只证明对方知道当前 PIN，不绑定设备身份。PIN 只有 6 位（约 20 比特）且不是 PAKE——它作为 HKDF 输入参与派生，所以能在路径上抓到完整握手的攻击者可以离线穷举 10⁶ 个候选；在线穷举则被"每 IP 8 次 / 5 分钟"限流压制。结论：它防得住误连与被动窃听，防不住蹲守同一来源地址的定向攻击，也防不住已知 PIN 的中间人。
+- **手机自己开的网页传送门只能打开、不能配对。** Android 端只监听 `http`，而同一份门户页面在非安全上下文里会拒绝配对，所以手机当 hub 时网页端只是入口提示；要配对请用另一台 SafeDrop 设备扫本机的配对码（桌面 hub 有自签名 HTTPS，不受此限）。给手机侧补 TLS 是待办。
 - **无身份持久化信任。** 每次连接都重新配对，不保存"已信任设备"凭据，因此每次接入都需要读取当前 PIN。
 - **Web 门户需要 HTTPS 才加密。** 浏览器只在安全上下文中暴露 WebCrypto，所以门户必须通过 `https://` 打开（见下节）。若你用 `http://` 打开门户，加密不可用，页面会直接拒绝配对而不是静默降级为明文。
 
@@ -269,7 +272,7 @@ hub 会为门户自动生成一张自签名证书（保存在 `computer-design/d
 ┌────────▼──────┐ ┌────▼─────┐ ┌─────▼───────┐ ┌──────▼──────┐
 │ Android Client│ │ Browser  │ │ Another     │ │ macOS/Linux │
 │ (Kotlin +     │ │ Portal   │ │ Android     │ │ (unverified)│
-│  Compose)     │ │          │ │ (via relay) │ │             │
+│  Views)       │ │          │ │ (via relay) │ │             │
 │ • Foreground  │ │ • Drag & │ │             │ │             │
 │   Service     │ │   drop   │ │             │ │             │
 │ • WakeLock    │ │ • QR/PIN │ │             │ │             │
@@ -284,7 +287,7 @@ hub 会为门户自动生成一张自签名证书（保存在 `computer-design/d
 - UI: 原生 HTML5 + CSS3 + Vanilla JS，Canvas 绘制雷达图
 
 **Android**
-- Kotlin + Jetpack Compose (Material3)，minSdk 26 / targetSdk 34
+- Kotlin + ViewBinding（Material 3 主题与组件，非 Jetpack Compose），minSdk 26 / targetSdk 34
 - OkHttp3 负责分块上传，CameraX 负责扫码
 - BouncyCastle 提供 X25519 与 AES-GCM
 - MediaStore 适配分区存储（Android 10+）
@@ -292,9 +295,10 @@ hub 会为门户自动生成一张自签名证书（保存在 `computer-design/d
 
 **协议**
 - HTTP/1.1 + JSON 控制面，分块上传走 `application/octet-stream`，另开 HTTPS 监听供浏览器加密
-- AES-256-GCM 分块封装：`nonce(12) || ciphertext || tag(16)`，AAD = `safedrop-e2e-v1|chunk|<taskId>|<index>`
+- AES-256-GCM 分块封装：`nonce(12) || ciphertext || tag(16)`，AAD = `safedrop-e2e-v2|chunk|<taskId>|<index>|<count>|<chunkSize>`
 - 会话密钥：ECDH 共享密钥经 HKDF-SHA256（salt 绑定会话 id，info 携带配对凭据）派生
 - UDP beacon 发现（`8890`），非 mDNS
+- **`protocol.json` 是所有跨端常量的唯一来源**（协议标记、模板、密钥/nonce/tag 宽度、PIN 与 token、宽限期、限流窗口、会话 TTL、端口与请求头名）。`node scripts/protocol.js gen` 据此生成 Node 与 Kotlin 两侧的实现，`node scripts/protocol.js check` 在校验里同时盯住两处浏览器内联副本和 APK 里的 portal.html 副本
 
 ---
 
@@ -323,7 +327,7 @@ DocumentX/
 │   │   ├── cache/DeviceNameCache.kt      # 指纹 → 名称持久化
 │   │   └── storage/ScopedStorageHelper.kt
 │   ├── service/TransferForegroundService.kt
-│   └── ui/                               # Compose UI、雷达图、扫码
+│   └── ui/                               # ViewBinding 视图、雷达图、扫码
 ├── CHANGELOG.md
 └── LICENSE (MIT)
 ```
@@ -345,7 +349,7 @@ DocumentX/
 接通 X25519 + AES-256-GCM 载荷加密，配对凭据改为 HMAC 证明而不上网，新增配对限流、服务端会话强制校验、自签名 HTTPS 门户，并修复了原先确定性 nonce 的缺陷。打包侧补齐了此前缺失的后端模块与发布签名配置。
 
 ### 🔜 Next
-- **断点续传** — 传输进度已持久化到 `temp_transfers/progress.json`，具备继续实现的基础
+- **断点续传**（仍未实现）— 前置条件已经具备：分块现在按 `序号 × 步长` 定位写、且只认认证过的块集合，所以"从中间继续"不再要求重传整文件。剩下的缺口是发送端无从知道接收端已经有哪些块（需要一个查询已收块列表的接口），以及 `temp_transfers/progress.json` 目前只在启动时读取、运行期不写入
 - **批量下载**（TAR.GZ 打包）与 **二维码分享链接**（带时效）
 - macOS / Linux 实机验证
 
@@ -359,20 +363,28 @@ DocumentX/
 ## 🧪 Testing
 
 ```bash
-# 传输加密（配对、加解密、篡改/重排拒绝、限流、手机→手机中继、HTTPS 门户）
+# 契约与单元测试（无需端口、无需设备）
+node scripts/protocol.js check          # 四端实现与 protocol.json 是否还是同一份协议
+node scripts/gen-vectors.js --check     # 金标向量能否被当前代码逐字节复现
+node --test "test/*.test.js"            # 加密层与 SSRF 防护的单元测试
+
+# 传输加密端到端（起真实 hub 进程：配对、加解密、丢块/重放/提前定稿拒绝、
+# 限流、手机→手机中继、HTTPS 门户、以及直接执行 portal.html 里的浏览器加密代码）
 node test_encryption_e2e.js
 
-# 后端与安全相关
+# 中继目标与路径处理
 node test_qr_and_security.js
 node test_multi_device_and_portal.js
 
-# UI / 交互
+# UI / 交互（以源码字符串断言为主，不能证明行为，只算回归提示）
 node test_theme_and_device_display.js
 node test_scrollbar_and_copy_features.js
 node test_new_chat_and_layout_features.js
 ```
 
-Android 侧加密单元测试：`android-design/com/app/src/test/java/com/safedrop/mobile/CryptoEngineTest.kt`（8 项，覆盖密钥协商、随机 nonce、篡改拒绝、AAD 绑定与手机→手机加解密交换）。
+Android 侧加密单元测试：`android-design/com/app/src/test/java/com/safedrop/mobile/CryptoEngineTest.kt`。它读取与 Node 同一份 `test/vectors/e2e-v2.json`，逐项核对模板拼接结果、AAD 字节、双向证明与每个密封分块的解密，因此任何一端单方面改动协议都会在一侧红掉。运行：`cd android-design/com && ./gradlew.bat testDebugUnitTest --offline`。
+
+CI 两侧都跑：`test-desktop` 执行上面前三条契约/单元测试加三个起真实 hub 的端到端套件，`test-android` 执行上面那条 Gradle 单元测试并上传报告。
 
 ---
 

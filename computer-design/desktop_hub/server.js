@@ -1,10 +1,11 @@
 /**
  * SafeDrop Desktop Hub - Lightweight Embedded Hub Server
  * 100% native Node.js, zero external dependencies, rapid startup.
- * Features UDP beacon device discovery, chunked streaming transfer (4MB chunks) with
- * optional gzip, and pairing via a rotating PIN / one-time token.
- * Note: transfer payloads are currently unencrypted - the X25519 key pair is used for
- * the device fingerprint and handshake identity only, not for payload encryption.
+ * Features UDP beacon device discovery, chunked streaming transfer with optional per-chunk gzip,
+ * and pairing via a rotating PIN / one-time token.
+ * Note: payloads from the LAN arrive AES-256-GCM sealed under an ephemeral X25519 session key (see
+ * crypto_protocol.js), and are refused before writing anything if the tag or the chunk geometry
+ * does not verify. Only this machine's own loopback may still post plaintext.
  */
 
 const http = require('http');
@@ -198,10 +199,40 @@ const hostFingerprint = crypto.createHash('sha256').update(hostPubRaw).digest('h
 // more than one generation is kept: with a single previous slot a second pairing inside the
 // window evicted the value still displayed, and the next device was rejected with
 // "Pairing proof verification failed" even though the user had just read it off the screen.
-const PAIRING_GRACE_MS = 60 * 1000;
-const PAIRING_GRACE_GENERATIONS = 3;
-let currentOneTimeToken = crypto.randomBytes(6).toString('hex');
-let currentPin = String(Math.floor(100000 + Math.random() * 900000));
+const PAIRING_GRACE_MS = cryptoProtocol.PAIRING.GRACE_MS;
+const PAIRING_GRACE_GENERATIONS = cryptoProtocol.PAIRING.GRACE_GENERATIONS;
+
+/**
+ * The PIN is the only input that separates a paired peer from an eavesdropper on the LAN, so it
+ * must come from the CSPRNG. Math.random() is a V8 xorshift128+ sequence whose state can be
+ * recovered from enough of its other outputs, and this server used to publish such outputs on
+ * unauthenticated endpoints. Android made the same switch in a7579df.
+ */
+function newPairingPin() {
+  return String(crypto.randomInt(cryptoProtocol.PAIRING.PIN_MIN, cryptoProtocol.PAIRING.PIN_MAX_EXCLUSIVE));
+}
+
+/** The QR counterpart of the PIN: same role as HKDF input, so the same source and width. */
+function newPairingToken() {
+  return crypto.randomBytes(cryptoProtocol.PAIRING.TOKEN_BYTES).toString('hex');
+}
+
+/**
+ * The browser portal can only encrypt on a secure origin, so the pairing credentials go into its
+ * URL only while TLS is actually listening. On plain HTTP the portal refuses to pair anyway, and
+ * appending the PIN there would carry it in cleartext and park it in the browser's history.
+ */
+function portalWebUrl() {
+  const base = TLS_ENABLED
+    ? `https://${LOCAL_IP}:${TLS_PORT}/portal`
+    : `http://${LOCAL_IP}:${PORT}/portal`;
+  return TLS_ENABLED
+    ? `${base}?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`
+    : base;
+}
+
+let currentOneTimeToken = newPairingToken();
+let currentPin = newPairingPin();
 /** Retired credentials, newest first: [{ pin, token, at }]. */
 let retiredCredentials = [];
 
@@ -216,14 +247,14 @@ const e2eSessions = new Map();
 // forgotten — the transfer then failed with 401 and needed a fresh pairing. The absolute cap
 // still bounds how long a single negotiation may live, so this stays effectively ephemeral.
 // Both windows are overridable so tests can exercise expiry without waiting.
-const SESSION_IDLE_TTL_MS = Number(process.env.SAFEDROP_SESSION_IDLE_MS) || 10 * 60 * 1000;
-const SESSION_MAX_TTL_MS = Number(process.env.SAFEDROP_SESSION_MAX_MS) || 12 * 60 * 60 * 1000;
+const SESSION_IDLE_TTL_MS = Number(process.env.SAFEDROP_SESSION_IDLE_MS) || cryptoProtocol.SESSION.IDLE_TTL_MS;
+const SESSION_MAX_TTL_MS = Number(process.env.SAFEDROP_SESSION_MAX_MS) || cryptoProtocol.SESSION.MAX_TTL_MS;
 
 // Pairing attempts are rate limited per source IP to bound online guessing of the PIN.
 const pairingAttempts = new Map();
-const PAIRING_MAX_FAILURES = 8;
-const PAIRING_WINDOW_MS = 5 * 60 * 1000;
-const PAIRING_BLOCK_MS = 5 * 60 * 1000;
+const PAIRING_MAX_FAILURES = cryptoProtocol.PAIRING.MAX_FAILURES;
+const PAIRING_WINDOW_MS = cryptoProtocol.PAIRING.FAILURE_WINDOW_MS;
+const PAIRING_BLOCK_MS = cryptoProtocol.PAIRING.BLOCK_MS;
 
 /** A session lives until it goes idle, with an absolute cap on total lifetime. */
 function sessionExpired(session, now) {
@@ -240,6 +271,11 @@ const sessionGcTimer = setInterval(() => {
   for (const [ip, attempt] of pairingAttempts.entries()) {
     const settled = (!attempt.blockedUntil || now > attempt.blockedUntil);
     if (now - attempt.windowStart > PAIRING_WINDOW_MS && settled) pairingAttempts.delete(ip);
+  }
+  // A transfer whose sender disappeared leaves a .part behind; unlinking here is what keeps an
+  // abandoned upload from accumulating in the vault as an invisible dot-file forever.
+  for (const [key, task] of activeTransfers.entries()) {
+    if (now - task.lastSeen > TRANSFER_IDLE_MS) discardTransfer(key, task, 'abandoned');
   }
 }, 60 * 1000);
 if (sessionGcTimer.unref) sessionGcTimer.unref();
@@ -476,8 +512,293 @@ const MIME_TYPES = {
   '.zip': 'application/zip',
 };
 
+// In-flight encrypted transfers, keyed by task id plus destination name. The hub no longer
+// finalizes a file because "a chunk claiming to be the last one arrived": that judgement is made
+// from the authenticated chunk set, so the accounting has to live somewhere.
+const activeTransfers = new Map();
+const TRANSFER_IDLE_MS = 60 * 60 * 1000;
+
+function discardTransfer(key, task, why) {
+  activeTransfers.delete(key);
+  if (!task.partPath) return;
+  fs.unlink(task.partPath, (err) => {
+    if (err && err.code !== 'ENOENT') {
+      console.error(`[Upload] Could not remove abandoned ${task.partPath} (${why}):`, err.message);
+    }
+  });
+}
+
+/**
+ * Positional write. 'r+' keeps an existing file intact, and 'wx' creates it without truncating,
+ * because 'w+' would erase every chunk that arrived before this one.
+ */
+function writeChunkAtPosition(filePath, payload, position, callback) {
+  fs.open(filePath, 'r+', (err, fd) => {
+    const onFd = (openError, handle) => {
+      if (openError) return callback(openError);
+      fs.write(handle, payload, 0, payload.length, position, (writeError, written) => {
+        fs.close(handle, () => {
+          if (writeError) return callback(writeError);
+          if (written !== payload.length) return callback(new Error(`short write at offset ${position}`));
+          callback(null);
+        });
+      });
+    };
+    if (!err) return onFd(null, fd);
+    if (err.code !== 'ENOENT') return onFd(err);
+    fs.open(filePath, 'wx', (createError, handle) => {
+      // Two first chunks of the same task can both find no file, because the open is what
+      // creates it and that happens after the request was accepted. The loser then sees a file
+      // that exists - which is exactly the 'r+' case - so reopening is the whole fix.
+      if (createError && createError.code === 'EEXIST') return fs.open(filePath, 'r+', onFd);
+      onFd(createError, handle);
+    });
+  });
+}
+
+/**
+ * Decompress one chunk, refusing to hand back more than the sender committed to.
+ *
+ * The sealed body this hub accepts is capped, but what it inflates to is not, and a length check on
+ * the finished output only runs after the whole thing is in memory. The bound is the stride the
+ * sender authenticated in the AAD, so a chunk that exceeds it has already broken the geometry —
+ * this just stops it from being a violation that costs this machine's memory first.
+ */
+function inflateChunk(payload, limit, callback) {
+  const gunzip = zlib.createGunzip();
+  const pieces = [];
+  let total = 0;
+  let settled = false;
+
+  const settle = (err) => {
+    if (settled) return;
+    settled = true;
+    if (err) gunzip.destroy();
+    callback(err, err ? null : Buffer.concat(pieces));
+  };
+
+  gunzip.on('data', (piece) => {
+    total += piece.length;
+    if (total > limit) return settle(new Error(`inflated chunk exceeds the ${limit}-byte stride`));
+    pieces.push(piece);
+  });
+  gunzip.on('error', (err) => settle(err));
+  gunzip.on('end', () => settle(null));
+  gunzip.end(payload);
+}
+
+/**
+ * One authenticated chunk of a transfer destined for this hub.
+ *
+ * The chunk count and chunk size travel inside the AAD as well as in headers, which is what makes
+ * the rest of this possible: a value that is not authenticated cannot be trusted to decide when a
+ * file is finished, and "the sender says this was the last chunk" used to be the only rule. Each
+ * chunk is then written at index * chunkSize instead of being appended, so a replayed chunk
+ * overwrites itself rather than duplicating bytes, and arrival order stops mattering.
+ */
+function handleEncryptedChunk(ctx) {
+  const { req, res, session, clientIp, taskId, safeName, partPath, chunkIndex, totalChunks, chunkSize, fileSize, isCompressed } = ctx;
+  let answered = false;
+  const fail = (status, message, extra) => {
+    if (answered) return;
+    answered = true;
+    if (message) console.warn(`[Upload] Rejected chunk ${chunkIndex} of ${taskId}: ${message}`);
+    jsonResponse(res, status, { ...(message ? { error: message } : {}), ...(extra || {}) });
+  };
+
+  let geometryError = null;
+  try {
+    cryptoProtocol.chunkAad(taskId, chunkIndex, totalChunks, chunkSize);
+  } catch (e) {
+    geometryError = e.message;
+  }
+  if (geometryError) return fail(400, `Invalid chunk geometry: ${geometryError}`);
+
+  const key = `${taskId}|${safeName}`;
+  let task = activeTransfers.get(key);
+  if (!task) {
+    task = {
+      clientIp,
+      partPath,
+      count: totalChunks,
+      chunkSize,
+      received: new Map(),
+      lastSeen: Date.now()
+    };
+    activeTransfers.set(key, task);
+  } else {
+    if (task.clientIp !== clientIp) {
+      return fail(409, 'That task id is already in use by another peer');
+    }
+    if (task.count !== totalChunks || task.chunkSize !== chunkSize) {
+      return fail(409, 'Chunk geometry changed mid-transfer; the task must be restarted');
+    }
+    task.lastSeen = Date.now();
+  }
+
+  const packets = [];
+  let received = 0;
+  req.on('data', (chunk) => {
+    if (answered) return;
+    received += chunk.length;
+    if (received > cryptoProtocol.MAX_SEALED_CHUNK + cryptoProtocol.SEALED_OVERHEAD) {
+      discardTransfer(key, task, 'oversized chunk');
+      fail(413, 'Encrypted chunk exceeds the maximum accepted size');
+    }
+    packets.push(chunk);
+  });
+  req.on('error', (e) => fail(400, `Upload stream error: ${e.message}`));
+
+  req.on('end', () => {
+    if (answered) return;
+
+    let plaintext;
+    try {
+      plaintext = cryptoProtocol.decryptChunk(session.key, Buffer.concat(packets), taskId, chunkIndex, totalChunks, chunkSize);
+    } catch (e) {
+      // An unknown task id, a rewritten X-Chunk-Count / X-Chunk-Size or edited ciphertext all
+      // land here, because the header value is compared against bytes inside the sealed packet.
+      return fail(400, `Chunk rejected: ${e.message}`);
+    }
+
+    const finish = (payload) => {
+      const isLast = chunkIndex === totalChunks - 1;
+      // Only the final chunk may be short: everything before it defines the stride the file is
+      // reassembled at, so a short middle chunk means the sender lied about the geometry.
+      if (payload.length > chunkSize || (!isLast && payload.length !== chunkSize)) {
+        return fail(400, `Chunk ${chunkIndex} must carry ${isLast ? `at most ${chunkSize}` : `exactly ${chunkSize}`} bytes, got ${payload.length}`);
+      }
+
+      const digest = crypto.createHash('sha256').update(payload).digest('hex');
+      const seen = task.received.get(chunkIndex);
+      if (seen) {
+        if (seen.length === payload.length && seen.digest === digest) {
+          // Byte-identical resend: answer as if it worked, because it did, and the file on disk
+          // is unchanged. This is what makes a client retry safe instead of corrupting.
+          return respondProgress();
+        }
+        return fail(409, `Chunk ${chunkIndex} was already sent with different content`);
+      }
+
+      writeChunkAtPosition(task.partPath, payload, chunkIndex * chunkSize, (writeError) => {
+        if (writeError) {
+          discardTransfer(key, task, 'write failed');
+          return fail(507, `Failed to store chunk ${chunkIndex}: ${writeError.message}`);
+        }
+        task.received.set(chunkIndex, { digest, length: payload.length });
+        // Indices are validated against count and are unique in this map, so a full map can only
+        // hold 0..count-1 - which is what makes the size below trustworthy.
+        if (task.received.size < totalChunks) return respondProgress();
+        completeTransfer();
+      });
+    };
+
+    if (isCompressed) {
+      // Per chunk, after decryption: the stride this index is written at is the sender's
+      // uncompressed slice size, so that stride is both the expected length and the ceiling.
+      inflateChunk(plaintext, chunkSize, (err, payload) => {
+        if (err) return fail(400, `Decompression failed: ${err.message}`);
+        finish(payload);
+      });
+      return;
+    }
+    finish(plaintext);
+  });
+
+  function respondProgress() {
+    if (answered) return;
+    answered = true;
+    jsonResponse(res, 200, {
+      code: 0,
+      chunk_index: chunkIndex,
+      total_chunks: totalChunks,
+      chunks_received: task.received.size,
+      status: 'chunk_received',
+      compressed: isCompressed,
+      encrypted: true
+    });
+  }
+
+  function completeTransfer() {
+    const lastEntry = task.received.get(totalChunks - 1);
+    // Indices are validated against count and unique, so a full set is exactly 0..count-1; the
+    // guard only keeps a future change to that reasoning from crashing the hub mid-transfer.
+    if (!lastEntry) return fail(409, 'Transfer bookkeeping is inconsistent; the file was not saved');
+    const derivedSize = (totalChunks - 1) * chunkSize + lastEntry.length;
+    if (fileSize > 0 && fileSize !== derivedSize) {
+      discardTransfer(key, task, 'size mismatch');
+      return fail(400, `Declared file size ${fileSize} does not match the ${derivedSize} bytes that arrived`);
+    }
+
+    const finalPath = resolveUniqueFilePath(safeName);
+    // A positional write only guarantees the bytes it wrote. If a .part left by an earlier,
+    // interrupted attempt at the same task id is longer than this transfer, the reassembled
+    // chunks sit at the front of it and the stale tail would be renamed along with them - a
+    // file longer than the size just derived from the authenticated chunk set.
+    try {
+      fs.truncateSync(task.partPath, derivedSize);
+    } catch (truncateError) {
+      discardTransfer(key, task, 'truncate failed');
+      return fail(507, `Failed to finalize ${safeName}: ${truncateError.message}`);
+    }
+    fs.rename(task.partPath, finalPath, (err) => {
+      if (err) {
+        discardTransfer(key, task, 'rename failed');
+        return fail(500, `Failed to finalize file: ${err.message}`);
+      }
+      activeTransfers.delete(key);
+      const finalName = path.basename(finalPath);
+      transferHistory.unshift({
+        taskId,
+        fileName: finalName,
+        fileSize: derivedSize,
+        sender: clientIp,
+        status: 'completed',
+        path: finalPath,
+        compressed: isCompressed,
+        time: new Date().toLocaleTimeString()
+      });
+      console.log(`[SafeDrop] File successfully saved to vault: ${finalPath}${isCompressed ? ' (decompressed)' : ''} (decrypted)`);
+      answered = true;
+      jsonResponse(res, 200, {
+        code: 0,
+        chunk_index: chunkIndex,
+        total_chunks: totalChunks,
+        chunks_received: totalChunks,
+        status: 'completed',
+        compressed: isCompressed,
+        encrypted: true,
+        file_name: finalName,
+        file_size: derivedSize
+      });
+    });
+  }
+}
+
 // Create HTTP server
 const server = http.createServer(handleIncomingRequest);
+
+/** Request headers the protocol allows a browser to send; derived so none can be forgotten. */
+const CORS_ALLOW_HEADERS = ['Content-Type'].concat(Object.values(cryptoProtocol.HEADERS)).join(', ');
+
+/**
+ * Every browser that uses this hub loads its UI *from* the hub, so a legitimate caller's origin
+ * is always one of this machine's own addresses. Answering `Access-Control-Allow-Origin: *`
+ * instead let any page the user happens to visit on the LAN read and post to the API, so the
+ * header is now echoed only for loopback and private-LAN origins.
+ */
+function allowedCorsOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return null;
+  let host;
+  try {
+    host = new URL(origin).hostname;
+  } catch (err) {
+    return null;
+  }
+  host = host.replace(/^\[|\]$/g, '');
+  return isTrustedLocal(host) || isPrivateLanIp(host) ? origin : null;
+}
 
 /**
  * HTTP and HTTPS share one request handler, so behaviour cannot drift between them.
@@ -485,9 +806,15 @@ const server = http.createServer(handleIncomingRequest);
  */
 function handleIncomingRequest(req, res) {
   // CORS support
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Task-Id, X-Chunk-Index, X-Chunk-Count, X-File-Name, X-File-Size, X-Encrypted, X-Session-Id, X-Target-Session-Id, X-Target-Ip, X-Target-Port, X-Target-Name');
+  const allowedOrigin = allowedCorsOrigin(req);
+  if (allowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    // Derived from the protocol contract, because this list is exactly where a new chunk header
+    // used to be forgotten.
+    res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -560,9 +887,7 @@ function handleApi(pathname, req, res, urlObj) {
       payload.token = currentOneTimeToken;
       payload.qrUri = `safedrop://pair?ip=${LOCAL_IP}&port=${PORT}&fp=${hostFingerprint}&token=${currentOneTimeToken}&pin=${currentPin}`;
       // Point at HTTPS when available: it is the only origin where the browser can encrypt.
-      payload.webUrl = TLS_ENABLED
-        ? `https://${LOCAL_IP}:${TLS_PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`
-        : `http://${LOCAL_IP}:${PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`;
+      payload.webUrl = portalWebUrl();
       payload.downloadDir = DOWNLOAD_DIR;
     }
     jsonResponse(res, 200, payload);
@@ -674,6 +999,7 @@ function handleApi(pathname, req, res, urlObj) {
 
   // 4.3 DELETE /api/v1/devices/names/:fingerprint - Remove custom name
   if (pathname.startsWith('/api/v1/devices/names/') && req.method === 'DELETE') {
+    if (!ensureAuthorized(req, res)) return;
     const fingerprint = pathname.replace('/api/v1/devices/names/', '');
     if (!fingerprint || fingerprint.length < 8) {
       return jsonResponse(res, 400, { error: 'Invalid fingerprint' });
@@ -819,8 +1145,8 @@ function handleApi(pathname, req, res, urlObj) {
       retiredCredentials = retiredCredentials
         .filter((entry) => now - entry.at < PAIRING_GRACE_MS)
         .slice(0, PAIRING_GRACE_GENERATIONS);
-      currentPin = String(Math.floor(100000 + Math.random() * 900000));
-      currentOneTimeToken = crypto.randomBytes(6).toString('hex');
+      currentPin = newPairingPin();
+      currentOneTimeToken = newPairingToken();
 
       jsonResponse(res, 200, {
         code: 0,
@@ -845,12 +1171,10 @@ function handleApi(pathname, req, res, urlObj) {
     }
     LOCAL_IP = getLocalIp();
     hostDevice.ip = LOCAL_IP;
-    currentPin = String(Math.floor(100000 + Math.random() * 900000));
-    currentOneTimeToken = crypto.randomBytes(6).toString('hex');
+    currentPin = newPairingPin();
+    currentOneTimeToken = newPairingToken();
     const qrUri = `safedrop://pair?ip=${LOCAL_IP}&port=${PORT}&fp=${hostFingerprint}&token=${currentOneTimeToken}&pin=${currentPin}`;
-    const webUrl = TLS_ENABLED
-      ? `https://${LOCAL_IP}:${TLS_PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`
-      : `http://${LOCAL_IP}:${PORT}/portal?pin=${currentPin}&token=${currentOneTimeToken}&fp=${hostFingerprint}`;
+    const webUrl = portalWebUrl();
     console.log(`[SafeDrop] Dynamic pairing credentials refreshed (PIN=${currentPin})`);
     jsonResponse(res, 200, {
       code: 0,
@@ -891,6 +1215,16 @@ function handleApi(pathname, req, res, urlObj) {
       return jsonResponse(res, 400, {
         code: 400,
         error: 'X-Encrypted was set but no verified session key is available for this request'
+      });
+    }
+
+    // Holding a session key is not the same as using it, and once plaintext is accepted nothing
+    // authenticates the headers the receiver finishes a file from. The plaintext branch below is
+    // therefore for this machine only; a peer that paired has no reason to leave its key unused.
+    if (!isLocal && !isEncrypted) {
+      return jsonResponse(res, 400, {
+        code: 400,
+        error: 'Transfers from the LAN must be encrypted (X-Encrypted: 1). Pair first.'
       });
     }
 
@@ -975,87 +1309,32 @@ function handleApi(pathname, req, res, urlObj) {
     const safeName = sanitizeFileName(rawFileName);
     const chunkIndex = parseInt(req.headers['x-chunk-index'] || '0', 10);
     const totalChunks = parseInt(req.headers['x-chunk-count'] || '1', 10);
+    const chunkSize = parseInt(req.headers['x-chunk-size'] || '0', 10);
     const fileSize = parseInt(req.headers['x-file-size'] || '0', 10);
     
     // NEW: Check if chunk is compressed
     const isCompressed = req.headers['x-compressed'] === 'gzip';
 
     const partPath = path.join(DOWNLOAD_DIR, `.${taskId}_${safeName}.part`);
-    const writeStream = fs.createWriteStream(partPath, { flags: 'a' });
 
     if (isEncrypted) {
-      // Read the whole sealed packet, verify the tag, then append the plaintext. GCM
-      // verification is all-or-nothing, so nothing is written until the tag checks out.
-      const packets = [];
-      let received = 0;
-      const MAX_SEALED = 64 * 1024 * 1024; // generous ceiling for a single encrypted chunk
-      let aborted = false;
-
-      const fail = (status, message) => {
-        if (aborted) return;
-        aborted = true;
-        writeStream.destroy();
-        jsonResponse(res, status, { error: message });
-      };
-
-      req.on('data', (chunk) => {
-        if (aborted) return;
-        received += chunk.length;
-        if (received > MAX_SEALED) {
-          fail(413, 'Encrypted chunk exceeds the maximum accepted size');
-          return;
-        }
-        packets.push(chunk);
+      if (!session) {
+        return jsonResponse(res, 400, {
+          code: 400,
+          error: 'X-Encrypted was set but no verified session key is available for this request'
+        });
+      }
+      handleEncryptedChunk({
+        req, res, session, clientIp, taskId, safeName, partPath,
+        chunkIndex, totalChunks, chunkSize, fileSize, isCompressed
       });
-
-      req.on('error', (e) => fail(400, `Upload stream error: ${e.message}`));
-
-      req.on('end', () => {
-        if (aborted) return;
-
-        let plaintext;
-        try {
-          plaintext = cryptoProtocol.decryptChunk(session.key, Buffer.concat(packets), taskId, chunkIndex);
-        } catch (e) {
-          console.warn(`[Upload] Rejected chunk ${chunkIndex} of ${taskId}: ${e.message}`);
-          fail(400, `Decryption failed: ${e.message}`);
-          return;
-        }
-
-        // Optional gzip applies to the plaintext, after decryption.
-        let payload = plaintext;
-        if (isCompressed) {
-          try {
-            payload = zlib.gunzipSync(plaintext);
-          } catch (e) {
-            console.error('[Upload] Decompression error:', e.message);
-            fail(400, `Decompression failed: ${e.message}`);
-            return;
-          }
-        }
-
-        if (payload.length > 0) {
-          writeStream.write(payload);
-        }
-        writeStream.end();
-      });
-
-      writeStream.on('error', (err) => {
-        if (aborted) return;
-        aborted = true;
-        console.error('[Upload] Write error:', err);
-        jsonResponse(res, 500, { error: err.message });
-      });
-
-      writeStream.on('finish', () => {
-        if (aborted) return;
-        finalizeUpload();
-      });
-
       return;
     }
 
-    // Plaintext path (loopback only, enforced above).
+    // Plaintext path (loopback only, enforced above). This caller is this machine, which already
+    // holds the vault and the PIN, so it keeps the simpler append-then-rename behaviour and the
+    // completion rule it has always used; nothing on the network can reach this branch.
+    const writeStream = fs.createWriteStream(partPath, { flags: 'a' });
     let dataStream = req;
     if (isCompressed) {
       const gunzip = zlib.createGunzip();
@@ -1133,6 +1412,7 @@ function handleApi(pathname, req, res, urlObj) {
 
   // 7.1 Send or relay instant message POST /api/v1/message/send
   if (pathname === '/api/v1/message/send' && req.method === 'POST') {
+    if (!ensureAuthorized(req, res)) return;
     readJsonBody(req, (err, body) => {
       if (err || !body || !body.text) {
         return jsonResponse(res, 400, { error: 'Message content is required' });
@@ -1159,7 +1439,9 @@ function handleApi(pathname, req, res, urlObj) {
 
       chatMessages.push(msgObj);
       if (chatMessages.length > 500) chatMessages.shift();
-      console.log(`[Chat] Message recorded from ${senderName} (${clientIp || senderId}): "${text}"`);
+      // Log metadata only: message text is user content, and senderName is whatever the caller
+      // claimed, so either would let a peer write arbitrary lines into the hub's log.
+      console.log(`[Chat] Message recorded from ${clientIp || senderId} (${text.length} chars)`);
 
       // If targetIp is remote, relay HTTP POST to target mobile device
       if (targetIp && targetIp !== '127.0.0.1' && targetIp !== LOCAL_IP) {
@@ -1194,6 +1476,7 @@ function handleApi(pathname, req, res, urlObj) {
 
   // 7.2 Get messages list GET /api/v1/messages/list?since=...&peerId=...
   if (pathname === '/api/v1/messages/list' && req.method === 'GET') {
+    if (!ensureAuthorized(req, res)) return;
     const since = parseInt(urlObj.searchParams.get('since') || '0', 10);
     const peerId = urlObj.searchParams.get('peerId') || '';
     const filtered = chatMessages.filter(m => {

@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.safedrop.mobile.core.crypto.CryptoEngine
+import com.safedrop.mobile.core.crypto.ProtocolConst
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -62,7 +63,7 @@ class DesktopHubClient {
     fun hasSession(host: String, port: Int): Boolean = sessions.containsKey(sessionKey(host, port))
 
     private fun Request.Builder.withSession(host: String, port: Int): Request.Builder {
-        sessions[sessionKey(host, port)]?.let { header("X-Session-Id", it.id) }
+        sessions[sessionKey(host, port)]?.let { header(ProtocolConst.Headers.SESSIONID, it.id) }
         return this
     }
 
@@ -121,7 +122,20 @@ class DesktopHubClient {
             val response = okHttpClient.newCall(request).execute()
             if (response.isSuccessful) {
                 val body = response.body?.string()
-                gson.fromJson(body, JsonObject::class.java)
+                val parsed = gson.fromJson(body, JsonObject::class.java)
+                // The version marker is hashed into the session key, so a peer on another version
+                // would go on to reject our proof - which the UI shows as a wrong pairing code.
+                // Refusing the handshake here keeps that misdiagnosis from ever being seen.
+                val peerProtocol = parsed?.get("protocol")?.asString
+                if (peerProtocol != ProtocolConst.PROTOCOL) {
+                    Log.w(
+                        tag,
+                        "Refusing handshake: peer declares ${peerProtocol ?: "<none>"}, " +
+                                "this device speaks ${ProtocolConst.PROTOCOL}"
+                    )
+                    return@withContext null
+                }
+                parsed
             } else null
         } catch (e: Exception) {
             Log.e(tag, "Handshake init failed: ${e.message}")
@@ -187,8 +201,12 @@ class DesktopHubClient {
      * 5. Encrypted chunked upload (POST /api/v1/transfer/upload).
      *
      * Seals the chunk with AES-256-GCM using the session key when a session is present, and
-     * marks the request with X-Encrypted. The hub refuses unencrypted uploads from the LAN,
-     * so a missing session fails loudly instead of silently sending plaintext.
+     * marks the request with X-Encrypted. The receiver refuses remote uploads that are not inside
+     * a session, so a missing session fails loudly instead of silently sending plaintext.
+     *
+     * [chunkCount] and [chunkSize] travel inside the AAD as well as in headers: the receiver
+     * decides when a file is finished from those two numbers, and a header that nothing
+     * authenticates can be rewritten by anything between the two devices.
      */
     suspend fun uploadChunk(
         host: String,
@@ -198,6 +216,7 @@ class DesktopHubClient {
         fileSize: Long,
         chunkIndex: Int,
         chunkCount: Int,
+        chunkSize: Int,
         chunkData: ByteArray
     ): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -208,18 +227,19 @@ class DesktopHubClient {
             }
 
             val encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8.name()).replace("+", "%20")
-            val sealedChunk = cryptoEngine.encryptChunk(chunkData, session.key, taskId, chunkIndex)
+            val sealedChunk = cryptoEngine.encryptChunk(chunkData, session.key, taskId, chunkIndex, chunkCount, chunkSize)
             val url = "http://$host:$port/api/v1/transfer/upload"
             val requestBody = sealedChunk.toRequestBody("application/octet-stream".toMediaType())
             val request = Request.Builder()
                 .url(url)
-                .header("X-Task-Id", taskId)
-                .header("X-File-Name", encodedFileName)
-                .header("X-File-Size", fileSize.toString())
-                .header("X-Chunk-Index", chunkIndex.toString())
-                .header("X-Chunk-Count", chunkCount.toString())
-                .header("X-Encrypted", "1")
-                .header("X-Session-Id", session.id)
+                .header(ProtocolConst.Headers.TASKID, taskId)
+                .header(ProtocolConst.Headers.FILENAME, encodedFileName)
+                .header(ProtocolConst.Headers.FILESIZE, fileSize.toString())
+                .header(ProtocolConst.Headers.CHUNKINDEX, chunkIndex.toString())
+                .header(ProtocolConst.Headers.CHUNKCOUNT, chunkCount.toString())
+                .header(ProtocolConst.Headers.CHUNKSIZE, chunkSize.toString())
+                .header(ProtocolConst.Headers.ENCRYPTED, "1")
+                .header(ProtocolConst.Headers.SESSIONID, session.id)
                 .post(requestBody)
                 .build()
 

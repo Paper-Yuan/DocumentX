@@ -25,8 +25,143 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   driven by idle time, with an absolute twelve-hour cap, and is enforced on the request path
   as well as in the GC pass.
 
+### 🔒 Fixed — LAN exposure, credential entropy and version drift
+
+Each item below was checked against the code before being changed, and the hub-side changes are
+covered by `test_encryption_e2e.js` and `test_qr_and_security.js`.
+
+- **The hub's pairing PIN now comes from the CSPRNG.** It was drawn from `Math.random()` in three
+  places in `server.js` — V8's predictable xorshift128+ stream — while the Android side had already
+  moved to `SecureRandom`. Both ends now agree.
+- **Chat is no longer readable by anyone on the LAN.** `/api/v1/message/send` and
+  `/api/v1/messages/list` were the only data endpoints that skipped `ensureAuthorized`, so an
+  unpaired host could read the whole history and inject messages. Recorded message text is also no
+  longer echoed into the log, where a self-declared sender name could forge lines. Both clients now
+  withdraw the optimistically drawn bubble and say why, instead of showing a delivery that failed.
+  Re-auditing the endpoint list for this release found one more of the same class:
+  `DELETE /api/v1/devices/names/:fingerprint` let an unpaired LAN host wipe custom device names, and
+  it is now behind the same guard. The two `/api/v1/settings/*` endpoints were already loopback-only.
+- **Cross-origin responses are no longer `*`.** Every page the user visited while the hub was
+  running could call the API from the browser; the header is now echoed only for loopback and
+  private-LAN origins, with `Vary: Origin`.
+- **Credentials no longer ride in a plain-HTTP portal URL.** With TLS unavailable the hub handed out
+  `http://…/portal?pin=…&token=…` — a cleartext credential for a page that refuses to pair outside
+  a secure context anyway. Over HTTP the link now carries no credentials; over HTTPS unchanged.
+- **The phone's QR is a pairing code again.** Android encoded an `http` portal URL with the PIN in
+  its query string, which browsers can open but never pair with and which left the scanner with an
+  empty fingerprint. It now encodes `safedrop://pair?…&fp=…&pin=…`, and the dialog states that the
+  browser portal on a phone needs the HTTPS the phone does not currently serve.
+- **`node scripts/version-check.js` keeps the version string honest.** `APP_VERSION` in the hub is
+  the single source, and 20 assertions cover the Tauri config, npm manifest, `Cargo.toml` /
+  `Cargo.lock`, the Android `versionName`, the three C# assemblies plus their registry display
+  version, the changelog header and the README download names. It immediately caught `Cargo.toml`
+  at 1.2.0 and `Cargo.lock` at 1.0.1; both are fixed, and CI now fails on future drift.
+- **README security claims match the code in both directions.** It said the server does not enforce
+  pairing (it does), that reordered chunks are rejected (arrival order is not authenticated), that
+  the Android UI is Jetpack Compose (it is ViewBinding), and that resumable transfer had a
+  persisted-progress foundation (`.part` is appended in arrival order and progress is never written
+  during a transfer). The remaining boundaries — a 6-digit PIN is not a PAKE, chunk completeness,
+  the phone's HTTP-only portal — are now listed under *not provided*.
+
+### ⚠️ Breaking — Transfer completion is now authenticated (wire protocol `safedrop-e2e-v2`)
+
+Until now the receiver decided a file was complete because *a chunk claiming to be the last one
+arrived*. `X-Chunk-Count` and `X-File-Size` were plain headers, and only the task id and the chunk
+index sat inside the AES-GCM AAD, so nothing on the path was forced to honour them: a truncated
+transfer, a reordered chunk or a rewritten header produced a silently short or scrambled file that
+still carried a valid tag per chunk.
+
+- **The AAD covers the whole chunk geometry.** It is now
+  `{protocol}|chunk|{taskId}|{index}|{count}|{chunkSize}`, with the stride travelling in the new
+  `X-Chunk-Size` header, so the two values the completion decision is made from cannot be edited
+  without breaking the tag. The protocol marker moved to `safedrop-e2e-v2` and a v1 peer is refused
+  outright — there is no dual-read, because accepting both formats is the exact window this closes.
+  **Released 1.3.0 clients will not interoperate with this build; both ends must update together.**
+- **Chunks are written at their position, not appended.** Each accepted plaintext goes to
+  `index × chunkSize` in the `.part` file, so arrival order no longer affects the result and a
+  replayed chunk overwrites itself instead of duplicating bytes.
+- **A file is renamed only after the full authenticated set.** The receiver keeps the digest of
+  every accepted chunk and requires indices `0..count-1` to all be present, with the last chunk
+  sized consistently with the stride; the byte count is derived from that chunk stream and
+  compared against the declared `X-File-Size`, and a mismatch is rejected rather than saved.
+- **Retries are idempotent, conflicting retries are refused.** Re-sending the identical chunk after
+  a dropped response is accepted and changes nothing; sending different bytes for an index already
+  stored returns 409, and so does a second peer claiming the same task id.
+- **A finished file is exactly as long as its chunks add up to.** Positional writing guarantees the
+  bytes it wrote and nothing more, so a `.part` left behind by an earlier attempt at the same task
+  id — which survives a hub restart, since only the bookkeeping lived in memory — would have had its
+  stale tail renamed into the vault along with the new content. The `.part` is now cut to the
+  derived size before the rename, and `test_encryption_e2e.js` fails if that ever regresses.
+- **Two first chunks of the same task no longer fight over creating the file.** Both used to find
+  no `.part`, both asked the filesystem to create it, and the loser's `EEXIST` was treated as a
+  storage failure that deleted the winner's in-flight file. It now just reopens.
+- **The phone fills each slice before sealing it.** `InputStream.read()` on a `ContentResolver`
+  stream may legitimately return less than asked, and under v2 every non-final chunk must carry
+  exactly the stride, so one short read aborted a whole transfer. The sender now loops until the
+  slice is full or the stream has ended — which also means a 0-byte file transfers instead of
+  reporting a success that never happened.
+- **A paired peer can no longer upload in plaintext.** Both ends accepted an unsealed upload from
+  any holder of a session key, which put the receiver back on the append-and-trust-the-headers path
+  the rest of this section removes; the comment in the hub even said that branch was loopback-only.
+  It now is, on both ends, and the phone got the same rule.
+- **Per-chunk decompression is bounded by the authenticated stride.** The sealed body has always
+  been capped, but a few hundred bytes of gzip inflate to as much as the decoder allows, and the
+  length check ran only after the whole output was in memory. Over-compressed input is now refused
+  mid-inflate, on both ends.
+- **Abandoned transfers are cleaned up.** A `.part` whose sender disappeared is removed after an
+  hour instead of sitting in the vault forever. The hub sweeps on a one-minute timer; the phone
+  gained the same timer, because a sweep that only runs when a chunk arrives never fires for exactly
+  the transfers it exists to clean up.
+- **The same rules now apply on the receiving phone.** `MobileTransferServer` mirrors the hub's
+  positional writes, digest dedupe, completion check, stride-bounded inflate and `.part` cleanup, so
+  a transfer that survives one end is not silently corrupt at the other.
+- **A version mismatch says so.** The marker is hashed into the key derivation, so two peers on
+  different versions already failed each other's proof — but at `/handshake/verify`, which the UI
+  reports as "pairing rejected, check the code". Every client now compares the marker the peer
+  declares in its handshake response and names the version instead.
+
+### 🔧 Added — One contract file, generated constants, and CI that can actually fail
+
+The four implementations each carried their own copy of the protocol numbers, which is how the two
+ends drifted apart in the first place.
+
+- **`protocol.json` is the single source of truth** for the protocol marker, key/nonce/tag lengths,
+  the five AAD and HKDF templates, the pairing and session limits, chunk ceilings, the port numbers
+  and every transfer header name. `node scripts/protocol.js gen` writes
+  `computer-design/desktop_hub/protocol.gen.js` and `core/crypto/ProtocolConst.kt`; `check` fails on
+  drift. The browser portal has to stay a single self-contained file, so its literals are asserted
+  against the contract rather than imported, and the check also verifies the Android copy of
+  `portal.html` is byte-identical to the hub's, that no file spells a header the contract does not
+  define, and that both READMEs name the protocol actually in force.
+- **Cross-end golden vectors.** `node scripts/gen-vectors.js` writes `test/vectors/e2e-v2.json`
+  from the Node implementation with deterministic nonces; the Node tests and the Kotlin unit tests
+  both read that one file, so a passing Kotlin suite means the phone agrees with the hub byte for
+  byte — including the ten negative cases (geometry rewrites, tag flip, ciphertext change, nonce
+  swap).
+- **A real test suite for the parts that had none.** `node --test "test/*.test.js"` runs 23 tests
+  over the crypto protocol and the relay guard, and `test_encryption_e2e.js` grew from 37 to 52
+  checks — including one that extracts the portal's `SafeDropCrypto` from `portal.html`, executes
+  it verbatim in Node against the live hub, and uploads a 21-chunk file at a 64-byte stride. The
+  Kotlin suite runs 14 unit tests against the same vectors.
+- **CI gates on all of it.** `test-desktop` was a syntax check; it now runs the protocol check, the
+  vector reproducibility check, the `node:test` suite and three end-to-end suites on Node 22, next
+  to the version-consistency job. `test-android` printed "✅ Android project structure validated"
+  without building anything; it now installs Gradle at the pinned version, runs
+  `testDebugUnitTest` for real and uploads the report, so the shared vectors are enforced on both
+  implementations in CI rather than in theory. (That job is the one change here a local run cannot
+  prove: this project commits only the Windows wrapper script, so Linux has to drive Gradle itself.)
+- **`lan_guard.js` accepts only canonical dotted-quad IPv4.** `010.1.2.3`-style octets were parsed
+  inconsistently between the guard and the socket, which is the kind of gap an SSRF check is
+  supposed to close.
+- **Android pairing and session limits now follow the contract too**: the one-time token is 12 hex
+  characters from `SecureRandom` rather than a truncated UUID, the pairing-failure counter is a
+  window plus a block that reports `retry_after_seconds`, sessions expire on idle time under a
+  twelve-hour cap, CORS answers per origin instead of `*`, and the phone refuses to serve an
+  unencrypted fallback portal page if the bundled one cannot be loaded.
+
 ### Planned
-- Resumable file transfer with breakpoint continuation
+- Resumable file transfer with breakpoint continuation — the authenticated chunk set and positional
+  writes landed above, so only the persisted progress cursor is left
 - Batch download (TAR.GZ) and QR share links with expiry
 - macOS and Linux desktop validation on real hardware
 

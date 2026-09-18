@@ -1,0 +1,157 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * Golden vectors for the transport crypto protocol.
+ *
+ * The point is not to test Node against itself. These bytes are produced here and then checked by
+ * the Node unit tests *and* by CryptoEngineTest.kt on Android, so both implementations have to
+ * agree on the AAD layout, the HKDF inputs, both proofs and the sealed-chunk framing - which is
+ * exactly the class of bug that has already been fixed on one side only, twice (a7579df, aca8139).
+ *
+ *   node scripts/gen-vectors.js          write test/vectors/e2e-v2.json
+ *   node scripts/gen-vectors.js --check  fail if the committed file is not what the code produces
+ *
+ * Everything is deterministic: the vectors seal with a fixed, clearly-labelled vector nonce, which
+ * no transfer path uses (real chunks always draw a fresh one). Sealed packets are therefore checked
+ * in the decrypt direction, and the negative cases carry the geometry to attempt rather than an
+ * expected ciphertext.
+ *
+ * Each plaintext length is one the receiving policy also accepts (only the final chunk of a task
+ * may be short), so the vectors never encode a contradiction with server.js.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const ROOT = path.resolve(__dirname, '..');
+const PROTO = require(path.join(ROOT, 'computer-design/desktop_hub/crypto_protocol'));
+const OUT_REL = 'test/vectors/e2e-v2.json';
+const OUT = path.join(ROOT, OUT_REL);
+
+const SESSION_ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+const PAIRING_SECRET = '135790';
+const STRIDE = 64;
+const KEY = crypto.createHash('sha256').update(`${PROTO.PROTOCOL}|vector-key`).digest();
+
+/** index / count / stride / length triples, all policy-valid. */
+const CASES = [
+  { taskId: 'task_vector_a', index: 0, count: 3, chunkSize: STRIDE, length: STRIDE },
+  { taskId: 'task_vector_a', index: 1, count: 3, chunkSize: STRIDE, length: STRIDE },
+  { taskId: 'task_vector_a', index: 2, count: 3, chunkSize: STRIDE, length: STRIDE - 5 },
+  { taskId: 'task_vector_b', index: 0, count: 1, chunkSize: STRIDE, length: 21 },
+  { taskId: 'task_vector_c', index: 0, count: 4, chunkSize: 1024, length: 1024 }
+];
+
+function hex(buffer) {
+  return Buffer.from(buffer).toString('hex');
+}
+
+/** A payload of an obvious pattern, so a framing bug cannot pass as data. */
+function pattern(length) {
+  const out = Buffer.alloc(length);
+  for (let i = 0; i < length; i++) out[i] = (i * 7 + 11) & 0xff;
+  return out;
+}
+
+function build() {
+  const templateVars = (extra) => Object.assign({ protocol: PROTO.PROTOCOL }, extra);
+
+  const chunks = CASES.map((c) => {
+    const plaintext = pattern(c.length);
+    // Deterministic so --check is meaningful; transfers always go through encryptChunk, which
+    // draws a fresh nonce.
+    const nonce = crypto.createHash('sha256')
+      .update(`${PROTO.PROTOCOL}|vector-nonce|${c.taskId}|${c.index}`)
+      .digest()
+      .subarray(0, PROTO.NONCE_LEN);
+    const sealed = PROTO.sealWithNonce(KEY, plaintext, c.taskId, c.index, c.count, c.chunkSize, nonce);
+    return {
+      taskId: c.taskId,
+      index: c.index,
+      count: c.count,
+      chunkSize: c.chunkSize,
+      plaintextHex: hex(plaintext),
+      sealedHex: hex(sealed),
+      nonceHex: hex(sealed.subarray(0, PROTO.NONCE_LEN)),
+      ciphertextLen: sealed.length - PROTO.NONCE_LEN - PROTO.TAG_LEN,
+      tagHex: hex(sealed.subarray(sealed.length - PROTO.TAG_LEN))
+    };
+  });
+
+  const reject = [];
+  const moved = chunks[1];
+  for (const attempt of [
+    { why: 'chunk re-labelled with a different index', taskId: moved.taskId, index: 2, count: moved.count, chunkSize: moved.chunkSize, sealedHex: moved.sealedHex },
+    { why: 'chunk re-labelled with a smaller chunk count', taskId: moved.taskId, index: moved.index, count: 2, chunkSize: moved.chunkSize, sealedHex: moved.sealedHex },
+    { why: 'chunk re-labelled with a different stride', taskId: moved.taskId, index: moved.index, count: moved.count, chunkSize: moved.chunkSize + 1, sealedHex: moved.sealedHex },
+    { why: 'chunk moved to another task id', taskId: 'task_stolen', index: moved.index, count: moved.count, chunkSize: moved.chunkSize, sealedHex: moved.sealedHex }
+  ]) {
+    reject.push(attempt);
+  }
+
+  for (const [label, mutate] of [
+    ['single bit flipped in the GCM tag', (buf) => { buf[buf.length - 1] ^= 0x01; }],
+    ['single byte of ciphertext changed', (buf) => { buf[PROTO.NONCE_LEN] ^= 0xff; }],
+    ['nonce replaced with the one from another chunk', (buf, other) => { other.copy(buf, 0, 0, PROTO.NONCE_LEN); }]
+  ]) {
+    const base = Buffer.from(chunks[0].sealedHex, 'hex');
+    mutate(base, Buffer.from(chunks[1].sealedHex, 'hex'));
+    reject.push({
+      why: label,
+      taskId: chunks[0].taskId,
+      index: chunks[0].index,
+      count: chunks[0].count,
+      chunkSize: chunks[0].chunkSize,
+      sealedHex: hex(base)
+    });
+  }
+
+  const vectors = {
+    note: 'Generated by scripts/gen-vectors.js - do not hand-edit.',
+    protocol: PROTO.PROTOCOL,
+    constants: {
+      keyLen: PROTO.KEY_LEN,
+      nonceLen: PROTO.NONCE_LEN,
+      tagLen: PROTO.TAG_LEN
+    },
+    sessionId: SESSION_ID,
+    pairingSecret: PAIRING_SECRET,
+    keyHex: hex(KEY),
+    kdf: {
+      saltInputHex: hex(Buffer.from(PROTO.format('kdfSalt', templateVars({ sessionId: SESSION_ID })), 'utf8')),
+      saltDigestHex: hex(crypto.createHash('sha256').update(PROTO.format('kdfSalt', templateVars({ sessionId: SESSION_ID })), 'utf8').digest()),
+      infoHex: hex(Buffer.from(PROTO.format('kdfInfo', templateVars({ pairingSecret: PAIRING_SECRET })), 'utf8')),
+      clientProofInputHex: hex(Buffer.from(PROTO.format('clientProof', templateVars({ sessionId: SESSION_ID })), 'utf8')),
+      serverProofInputHex: hex(Buffer.from(PROTO.format('serverProof', templateVars({ sessionId: SESSION_ID })), 'utf8')),
+      clientProofHex: hex(PROTO.clientProof(KEY, SESSION_ID)),
+      serverProofHex: hex(PROTO.serverProof(KEY, SESSION_ID))
+    },
+    aad: CASES.map((c) => ({
+      taskId: c.taskId,
+      index: c.index,
+      count: c.count,
+      chunkSize: c.chunkSize,
+      hex: hex(PROTO.chunkAad(c.taskId, c.index, c.count, c.chunkSize))
+    })),
+    chunks,
+    reject
+  };
+
+  return `${JSON.stringify(vectors, null, 2)}\n`;
+}
+
+if (process.argv.includes('--check')) {
+  const source = build();
+  const committed = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : null;
+  if (committed !== source) {
+    console.error(`${OUT_REL} is not what the current code produces. Run: node scripts/gen-vectors.js`);
+    process.exit(1);
+  }
+  console.log(`${OUT_REL} is up to date`);
+} else {
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
+  fs.writeFileSync(OUT, build(), 'utf8');
+  console.log(`wrote ${OUT_REL}`);
+}

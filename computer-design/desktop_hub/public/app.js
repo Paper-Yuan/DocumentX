@@ -15,7 +15,7 @@
    * and the hub forwards the sealed bytes untouched.
    */
   const SafeDropCrypto = (() => {
-    const PROTOCOL = 'safedrop-e2e-v1';
+    const PROTOCOL = 'safedrop-e2e-v2';
     const NONCE_LEN = 12;
     const enc = new TextEncoder();
 
@@ -94,10 +94,15 @@
       return hmac(keyBytes, `${PROTOCOL}|server|${sessionId}`);
     }
 
-    async function encryptChunk(keyBytes, data, taskId, chunkIndex) {
+    /**
+     * Seal one chunk. `index`, `count` and `chunkSize` all belong in the AAD: the receiver decides
+     * when the file is complete from those two headers, and anything it does not authenticate it
+     * cannot trust. `chunkSize` is the sender's slice size, i.e. the stride between chunk offsets.
+     */
+    async function encryptChunk(keyBytes, data, taskId, index, count, chunkSize) {
       const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt']);
       const nonce = crypto.getRandomValues(new Uint8Array(NONCE_LEN));
-      const aad = enc.encode(`${PROTOCOL}|chunk|${taskId}|${chunkIndex}`);
+      const aad = enc.encode(`${PROTOCOL}|chunk|${taskId}|${index}|${count}|${chunkSize}`);
       const sealed = new Uint8Array(await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv: nonce, additionalData: aad, tagLength: 128 },
         key,
@@ -125,6 +130,12 @@
       encryptChunk
     };
   })();
+
+  /**
+   * Slice size this client uploads with. One definition, because the task's chunk count and the
+   * per-chunk offset must agree with each other and with the sender that sealed the AAD.
+   */
+  const UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
 
   /**
    * Sessions with relay destinations, keyed by "host:port". The hub holds no key for a
@@ -164,6 +175,13 @@
       });
       if (!initRes.ok) throw new Error(`handshake/init HTTP ${initRes.status}`);
       const initData = await initRes.json();
+
+      // The version marker is hashed into the key derivation, so a peer on another version would
+      // go on to fail the proof below - which reads exactly like a mistyped pairing code. Naming
+      // the real cause here is the difference between a fixable error and a confusing one.
+      if (initData.protocol !== SafeDropCrypto.PROTOCOL) {
+        throw new Error(`对端传输协议为 ${initData.protocol || '未知'}，本机为 ${SafeDropCrypto.PROTOCOL}，请升级其中一端`);
+      }
 
       const shared = await SafeDropCrypto.deriveSharedSecret(pair, SafeDropCrypto.fromHex(initData.server_public_key));
       const sessionKey = await SafeDropCrypto.deriveSessionKeyBytes(shared, initData.session_id, secret);
@@ -780,7 +798,7 @@
       file: file,
       fileName: file.name,
       fileSize: file.size,
-      totalChunks: Math.max(1, Math.ceil(file.size / (4 * 1024 * 1024))),
+      totalChunks: Math.max(1, Math.ceil(file.size / UPLOAD_CHUNK_SIZE)),
       currentChunk: 0,
       bytesUploaded: 0,
       status: 'queued', // queued | transferring | done | failed
@@ -840,7 +858,6 @@
   async function executeChunkedUpload(taskObj) {
     const file = taskObj.file;
     const targetDev = taskObj.targetDev;
-    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunk size
     const totalChunks = taskObj.totalChunks;
     const taskId = taskObj.id;
     const useCompression = shouldCompressFile(file.name, file.size);
@@ -893,8 +910,8 @@
     for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
       if (taskObj.status === 'cancelled') break;
 
-      const start = chunkIdx * CHUNK_SIZE;
-      const end = Math.min(file.size, start + CHUNK_SIZE);
+      const start = chunkIdx * UPLOAD_CHUNK_SIZE;
+      const end = Math.min(file.size, start + UPLOAD_CHUNK_SIZE);
       const chunkBlob = file.slice(start, end);
 
       try {
@@ -904,7 +921,8 @@
           'x-file-name': encodeURIComponent(file.name),
           'x-file-size': file.size.toString(),
           'x-chunk-index': chunkIdx.toString(),
-          'x-chunk-count': totalChunks.toString()
+          'x-chunk-count': totalChunks.toString(),
+          'x-chunk-size': UPLOAD_CHUNK_SIZE.toString()
         };
 
         // NEW: Add compression flag to headers
@@ -944,7 +962,9 @@
             targetSession.key,
             new Uint8Array(await bodyToSend.arrayBuffer()),
             taskId,
-            chunkIdx
+            chunkIdx,
+            totalChunks,
+            UPLOAD_CHUNK_SIZE
           );
           headers['x-encrypted'] = '1';
         }
@@ -1596,7 +1616,7 @@
     renderChatPeersList();
 
     try {
-      await fetch(apiUrl('/api/v1/message/send'), {
+      const res = await fetch(apiUrl('/api/v1/message/send'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1611,6 +1631,16 @@
           senderName: state.info?.host?.name || '纸鸢 (Desktop Hub)'
         })
       });
+      // The bubble was rendered optimistically. Opening this page by LAN address instead of
+      // localhost means the hub treats it as an unpaired caller and answers 401, so take the
+      // message back instead of leaving a delivery that never happened.
+      if (!res.ok) {
+        state.peerHistories[peerId] = state.peerHistories[peerId].filter(m => m.id !== msgObj.id);
+        saveChatHistories();
+        renderChatConversation();
+        renderChatPeersList();
+        showToast(`消息未送达：${(await res.json().catch(() => ({}))).error || res.status}`, 'error');
+      }
     } catch (e) {
       console.warn('Message send failed:', e);
     }
@@ -1817,7 +1847,11 @@
     // Select target URI to encode
     const targetText = state.qrMode === 'app'
       ? (state.info.qrUri || `safedrop://pair?ip=${state.info.localIp}&port=${state.info.port}&fp=${state.info.fingerprint}&token=${state.info.token}&pin=${state.info.pin}`)
-      : (state.info.webUrl || `http://${state.info.localIp}:${state.info.port}/portal?pin=${state.info.pin}&token=${state.info.token}&fp=${state.info.fingerprint}`);
+      : (state.info.webUrl || (state.info.tlsPort
+        // Credentials belong in the portal URL only on a secure origin, where the browser can
+        // actually encrypt; over http:// the portal refuses to pair.
+        ? `https://${state.info.localIp}:${state.info.tlsPort}/portal?pin=${state.info.pin}&token=${state.info.token}&fp=${state.info.fingerprint}`
+        : `http://${state.info.localIp}:${state.info.port}/portal`));
 
     if (dom.modalDirectUrl) {
       dom.modalDirectUrl.textContent = targetText;

@@ -14,9 +14,29 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { spawn } = require('child_process');
 
 const PROTO = require('./computer-design/desktop_hub/crypto_protocol');
+
+/**
+ * Seal one chunk the way a sender has to: the index, the chunk count and the stride all go into
+ * the AAD, so a receiver can tell "this chunk is genuine" apart from "this file is complete".
+ * `stride` is the sender's slice size, i.e. the offset step, not the length of this packet.
+ */
+function sealChunk(key, plaintext, taskId, index, count, stride) {
+  return PROTO.encryptChunk(key, plaintext, taskId, index, count, stride);
+}
+
+/** The chunk geometry headers that go with a sealed chunk. */
+function chunkHeaders(taskId, index, count, stride) {
+  return {
+    'X-Task-Id': taskId,
+    'X-Chunk-Index': String(index),
+    'X-Chunk-Count': String(count),
+    'X-Chunk-Size': String(stride)
+  };
+}
 
 // Ports are derived from the process id so back-to-back runs cannot collide with a listener
 // that a previous hub has not released yet (which would otherwise stall the run).
@@ -246,25 +266,23 @@ async function main() {
   console.log('\n▶ Section 3: uploaded file content');
   const taskId = `task_${Date.now()}`;
   const fileName = 'encrypted_payload.bin';
-  const payload = crypto.randomBytes(300 * 1024);
+  // Deliberately not a multiple of the chunk stride, so the short final chunk is exercised.
+  const payload = crypto.randomBytes(300 * 1024 + 7);
   const chunkSize = 100 * 1024;
   const totalChunks = Math.ceil(payload.length / chunkSize);
 
   const uploadStatuses = [];
   for (let i = 0; i < totalChunks; i++) {
     const slice = payload.subarray(i * chunkSize, Math.min(payload.length, (i + 1) * chunkSize));
-    const sealed = PROTO.encryptChunk(paired.key, slice, taskId, i);
+    const sealed = sealChunk(paired.key, slice, taskId, i, totalChunks, chunkSize);
     const res = await request('POST', '/api/v1/transfer/upload', {
-      headers: {
+      headers: Object.assign({
         'Content-Type': 'application/octet-stream',
-        'X-Task-Id': taskId,
         'X-File-Name': encodeURIComponent(fileName),
         'X-File-Size': String(payload.length),
-        'X-Chunk-Index': String(i),
-        'X-Chunk-Count': String(totalChunks),
         'X-Encrypted': '1',
         'X-Session-Id': paired.sessionId
-      },
+      }, chunkHeaders(taskId, i, totalChunks, chunkSize)),
       body: sealed
     });
     uploadStatuses.push(res.status);
@@ -281,7 +299,7 @@ async function main() {
 
   check('the sealed wire packets differ from what was written', () => {
     const firstSlice = payload.subarray(0, chunkSize);
-    const sealed = PROTO.encryptChunk(paired.key, firstSlice, taskId, 0);
+    const sealed = sealChunk(paired.key, firstSlice, taskId, 0, totalChunks, chunkSize);
     const wirePayload = sealed.subarray(PROTO.NONCE_LEN, sealed.length - PROTO.TAG_LEN);
     assert.ok(!wirePayload.equals(firstSlice), 'ciphertext should not equal plaintext');
     assert.strictEqual(wirePayload.length, firstSlice.length, 'GCM ciphertext keeps the plaintext length');
@@ -296,6 +314,42 @@ async function main() {
     assert.ok(dl.body.equals(payload), 'content mismatch');
   });
 
+  // Compression is per chunk and happens before the seal, so the stride the receiver reassembles
+  // at is the *uncompressed* slice size. Nothing else in the suite touches that branch.
+  console.log('\n▶ Section 3b: compressed chunks');
+  const gzTask = `task_gz_${Date.now()}`;
+  const gzName = 'compressed_payload.bin';
+  const gzPlain = crypto.randomBytes(250 * 1024 + 11);
+  const gzStride = 100 * 1024;
+  const gzCount = Math.ceil(gzPlain.length / gzStride);
+
+  const gzStatuses = [];
+  for (let i = 0; i < gzCount; i++) {
+    const slice = gzPlain.subarray(i * gzStride, Math.min(gzPlain.length, (i + 1) * gzStride));
+    const sealed = sealChunk(paired.key, zlib.gzipSync(slice), gzTask, i, gzCount, gzStride);
+    const res = await request('POST', '/api/v1/transfer/upload', {
+      headers: Object.assign({
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(gzName),
+        'X-File-Size': String(gzPlain.length),
+        'X-Encrypted': '1',
+        'X-Compressed': 'gzip',
+        'X-Session-Id': paired.sessionId
+      }, chunkHeaders(gzTask, i, gzCount, gzStride)),
+      body: sealed
+    });
+    gzStatuses.push(res.status);
+  }
+  check('every compressed chunk is accepted', () => {
+    assert.ok(gzStatuses.every((s) => s === 200), `statuses: ${gzStatuses.join(',')}`);
+  });
+
+  check('the vault holds the inflated file, not the gzip stream', () => {
+    const stored = fs.readFileSync(path.join(VAULT_DIR, gzName));
+    assert.strictEqual(stored.length, gzPlain.length, `stored ${stored.length} bytes, expected ${gzPlain.length}`);
+    assert.ok(stored.equals(gzPlain), 'reassembled bytes differ from the original plaintext');
+  });
+
   console.log('\n▶ Section 4: negative cases');
   const noSession = await request('GET', '/api/v1/files/list');
   check('unauthenticated vault listing is rejected', () => {
@@ -308,18 +362,16 @@ async function main() {
   });
 
   const tamperTask = `task_tamper_${Date.now()}`;
-  const sealedTamper = PROTO.encryptChunk(paired.key, Buffer.from('authentic payload'), tamperTask, 0);
+  const tamperPlain = Buffer.from('authentic payload');
+  const sealedTamper = sealChunk(paired.key, tamperPlain, tamperTask, 0, 1, tamperPlain.length);
   sealedTamper[sealedTamper.length - 1] ^= 0x01; // flip one bit of the GCM tag
   const tamperRes = await request('POST', '/api/v1/transfer/upload', {
-    headers: {
+    headers: Object.assign({
       'Content-Type': 'application/octet-stream',
-      'X-Task-Id': tamperTask,
       'X-File-Name': encodeURIComponent('tampered.bin'),
-      'X-Chunk-Index': '0',
-      'X-Chunk-Count': '1',
       'X-Encrypted': '1',
       'X-Session-Id': paired.sessionId
-    },
+    }, chunkHeaders(tamperTask, 0, 1, tamperPlain.length)),
     body: sealedTamper
   });
   check('tampered ciphertext is rejected', () => {
@@ -327,21 +379,123 @@ async function main() {
   });
 
   const reorderTask = `task_reorder_${Date.now()}`;
-  const sealedForIndex1 = PROTO.encryptChunk(paired.key, Buffer.from('chunk one'), reorderTask, 1);
+  const sealedForIndex1 = sealChunk(paired.key, Buffer.from('chunk one'), reorderTask, 1, 2, 9);
   const reorderRes = await request('POST', '/api/v1/transfer/upload', {
-    headers: {
+    headers: Object.assign({
       'Content-Type': 'application/octet-stream',
-      'X-Task-Id': reorderTask,
       'X-File-Name': encodeURIComponent('reordered.bin'),
-      'X-Chunk-Index': '0', // claiming index 0 while sealed for index 1
-      'X-Chunk-Count': '2',
       'X-Encrypted': '1',
       'X-Session-Id': paired.sessionId
-    },
+    }, chunkHeaders(reorderTask, 0, 2, 9)), // claiming index 0 while sealed for index 1
     body: sealedForIndex1
   });
   check('a chunk presented under the wrong index is rejected (AAD binding)', () => {
     assert.strictEqual(reorderRes.status, 400, `expected 400, got ${reorderRes.status}`);
+  });
+
+  // The three cases below are what binding count and stride into the AAD buys: previously the
+  // headers decided when a file was finished, and nothing authenticated the headers.
+  const lieTask = `task_countlie_${Date.now()}`;
+  const lieStride = 16;
+  const lieChunks = [Buffer.from('0123456789abcdef'), Buffer.from('0123456789abcdef'), Buffer.from('xy')];
+  const lieStatuses = [];
+  for (let i = 0; i < lieChunks.length; i++) {
+    const sealed = sealChunk(paired.key, lieChunks[i], lieTask, i, lieChunks.length, lieStride);
+    lieStatuses.push((await request('POST', '/api/v1/transfer/upload', {
+      headers: Object.assign({
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent('count_lie.bin'),
+        'X-File-Size': String(lieChunks[0].length * 2 + lieChunks[2].length),
+        'X-Encrypted': '1',
+        'X-Session-Id': paired.sessionId
+      }, chunkHeaders(lieTask, i, i === 0 ? lieChunks.length : 1, lieStride)), // from chunk 1 on it claims count=1
+      body: sealed
+    })).status);
+  }
+  check('rewriting X-Chunk-Count to finalize early is rejected', () => {
+    assert.strictEqual(lieStatuses[0], 200, `first chunk should be accepted, got ${lieStatuses[0]}`);
+    assert.strictEqual(lieStatuses[1], 400, `a chunk sealed for count=3 must not pass as count=1, got ${lieStatuses[1]}`);
+    assert.ok(!fs.existsSync(path.join(VAULT_DIR, 'count_lie.bin')), 'the file must not appear in the vault');
+  });
+
+  const dropTask = `task_drop_${Date.now()}`;
+  const dropStride = 16;
+  const dropChunks = [Buffer.from('0123456789abcdef'), Buffer.from('0123456789abcdef'), Buffer.from('end')];
+  for (let i = 0; i < dropChunks.length; i++) {
+    if (i === 1) continue; // silently lose the middle chunk
+    const sealed = sealChunk(paired.key, dropChunks[i], dropTask, i, dropChunks.length, dropStride);
+    await request('POST', '/api/v1/transfer/upload', {
+      headers: Object.assign({
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent('dropped.bin'),
+        'X-Encrypted': '1',
+        'X-Session-Id': paired.sessionId
+      }, chunkHeaders(dropTask, i, dropChunks.length, dropStride)),
+      body: sealed
+    });
+  }
+  check('a file with a missing middle chunk is never finalized', () => {
+    assert.ok(!fs.existsSync(path.join(VAULT_DIR, 'dropped.bin')), 'a truncated file must not be renamed into the vault');
+  });
+
+  const dupTask = `task_dup_${Date.now()}`;
+  const dupStride = 8;
+  const dupA = Buffer.from('aaaaaaaa');
+  const sendDup = async (payload, index, count, stride) => (await request('POST', '/api/v1/transfer/upload', {
+    headers: Object.assign({
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent('dup.bin'),
+      'X-Encrypted': '1',
+      'X-Session-Id': paired.sessionId
+    }, chunkHeaders(dupTask, index, count, stride)),
+    body: sealChunk(paired.key, payload, dupTask, index, count, stride)
+  })).status;
+  const dupStatuses = [];
+  dupStatuses.push(await sendDup(dupA, 0, 2, dupStride));
+  dupStatuses.push(await sendDup(dupA, 0, 2, dupStride));
+  dupStatuses.push(await sendDup(Buffer.from('bbbbbbbb'), 0, 2, dupStride));
+  dupStatuses.push(await sendDup(Buffer.from('z'), 1, 2, dupStride));
+  check('resending an identical chunk is idempotent, resending different bytes is refused', () => {
+    assert.deepStrictEqual(dupStatuses, [200, 200, 409, 200], `statuses: ${dupStatuses.join(',')}`);
+    const stored = fs.readFileSync(path.join(VAULT_DIR, 'dup.bin'));
+    assert.ok(stored.equals(Buffer.concat([dupA, Buffer.from('z')])), `retry must not corrupt the file, got ${stored.toString('hex')}`);
+  });
+
+  const oooTask = `task_ooo_${Date.now()}`;
+  const oooStride = 8;
+  const oooChunks = [Buffer.from('first--1'), Buffer.from('second-2'), Buffer.from('tail')];
+  const oooOrder = [2, 0, 1];
+  const oooStatuses = [];
+  for (const i of oooOrder) {
+    oooStatuses.push(await request('POST', '/api/v1/transfer/upload', {
+      headers: Object.assign({
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent('out_of_order.bin'),
+        'X-Encrypted': '1',
+        'X-Session-Id': paired.sessionId
+      }, chunkHeaders(oooTask, i, oooChunks.length, oooStride)),
+      body: sealChunk(paired.key, oooChunks[i], oooTask, i, oooChunks.length, oooStride)
+    }).then((r) => r.status));
+  }
+  check('chunks applied out of order still reassemble in the right order', () => {
+    assert.ok(oooStatuses.every((s) => s === 200), `statuses: ${oooStatuses.join(',')}`);
+    const stored = fs.readFileSync(path.join(VAULT_DIR, 'out_of_order.bin'));
+    assert.ok(stored.equals(Buffer.concat(oooChunks)), `got ${JSON.stringify(stored.toString())}`);
+  });
+
+  const sizeTask = `task_size_${Date.now()}`;
+  const sizePlain = Buffer.from('0123456789abcdef');
+  const sizeRes = await request('POST', '/api/v1/transfer/upload', {
+    headers: Object.assign({
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent('stride.bin'),
+      'X-Encrypted': '1',
+      'X-Session-Id': paired.sessionId
+    }, chunkHeaders(sizeTask, 0, 1, sizePlain.length)),
+    body: sealChunk(paired.key, sizePlain, sizeTask, 0, 1, sizePlain.length + 1) // header stride != AAD stride
+  });
+  check('a rewritten X-Chunk-Size breaks the tag and is rejected', () => {
+    assert.strictEqual(sizeRes.status, 400, `expected 400, got ${sizeRes.status}`);
   });
 
   const noSecretPair = await pair('999999');
@@ -377,6 +531,73 @@ async function main() {
   });
   check('plaintext upload without a session is refused', () => {
     assert.strictEqual(plaintextRemote.status, 401, `expected 401, got ${plaintextRemote.status}`);
+  });
+
+  // Having a session key and using it are two different things, and the plaintext branch has no
+  // authenticated chunk set behind it at all, so a paired peer must not be able to choose it.
+  const plaintextWithSession = await request('POST', '/api/v1/transfer/upload', {
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-Task-Id': `task_plain_sess_${Date.now()}`,
+      'X-File-Name': 'plain_with_session.bin',
+      'X-Chunk-Index': '0',
+      'X-Chunk-Count': '1',
+      'X-Session-Id': paired.sessionId
+    },
+    body: Buffer.from('plaintext from a paired peer')
+  });
+  check('a paired peer cannot downgrade its own upload to plaintext', () => {
+    assert.strictEqual(plaintextWithSession.status, 400, `expected 400, got ${plaintextWithSession.status}`);
+    assert.ok(!fs.existsSync(path.join(VAULT_DIR, 'plain_with_session.bin')), 'nothing should reach the vault');
+  });
+
+  // The sealed packet below is a couple of hundred bytes, well inside every size limit, but it
+  // claims to inflate to 200 KB while committing to a 1 KB stride. Decompressing it to check that
+  // would be the attack, so the inflate stops at the stride the AAD already authenticated.
+  const bombTask = `task_bomb_${Date.now()}`;
+  const bombBody = zlib.gzipSync(Buffer.alloc(200 * 1024, 7));
+  const bombRes = await request('POST', '/api/v1/transfer/upload', {
+    headers: Object.assign({
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent('bomb.bin'),
+      'X-Encrypted': '1',
+      'X-Compressed': 'gzip',
+      'X-Session-Id': paired.sessionId
+    }, chunkHeaders(bombTask, 0, 1, 1024)),
+    body: sealChunk(paired.key, bombBody, bombTask, 0, 1, 1024)
+  });
+  check('a chunk that inflates past its authenticated stride is refused', () => {
+    assert.strictEqual(bombRes.status, 400, `expected 400, got ${bombRes.status}`);
+    assert.ok(/exceeds the 1024-byte stride/.test(bombRes.body.toString('utf8')),
+      `expected the inflate to be capped, got: ${bombRes.body.toString('utf8')}`);
+    assert.ok(!fs.existsSync(path.join(VAULT_DIR, 'bomb.bin')), 'nothing should reach the vault');
+  });
+
+  // A .part left by an earlier, interrupted attempt at the same task id is a state that really
+  // happens - the hub forgets its bookkeeping on restart but the file on disk survives. A
+  // positional write only guarantees the bytes it wrote, so unless the finished file is cut back
+  // to the size the authenticated chunks add up to, the tail of the old, longer one is renamed
+  // into the vault and reported as the new file's size.
+  const staleTask = `task_stale_${Date.now()}`;
+  const staleName = 'stale_tail.bin';
+  const staleBody = Buffer.from('the second attempt was shorter');
+  fs.writeFileSync(path.join(VAULT_DIR, `.${staleTask}_${staleName}.part`), Buffer.alloc(64 * 1024, 0xdd));
+  const staleRes = await request('POST', '/api/v1/transfer/upload', {
+    headers: Object.assign({
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(staleName),
+      'X-File-Size': String(staleBody.length),
+      'X-Encrypted': '1',
+      'X-Session-Id': paired.sessionId
+    }, chunkHeaders(staleTask, 0, 1, staleBody.length)),
+    body: sealChunk(paired.key, staleBody, staleTask, 0, 1, staleBody.length)
+  });
+  check('a stale .part cannot leave a tail on the finished file', () => {
+    assert.strictEqual(staleRes.status, 200, `expected 200, got ${staleRes.status}: ${staleRes.body}`);
+    const stored = fs.readFileSync(path.join(VAULT_DIR, staleName));
+    assert.strictEqual(stored.length, staleBody.length,
+      `finished file carries ${stored.length - staleBody.length} bytes of stale tail`);
+    assert.ok(stored.equals(staleBody), 'content differs from the transferred bytes');
   });
 
   // ---------------------------------------------------------------------------
@@ -514,7 +735,9 @@ async function main() {
       received.push({
         body: Buffer.concat(chunks),
         sessionId: req.headers['x-session-id'],
-        encrypted: req.headers['x-encrypted']
+        encrypted: req.headers['x-encrypted'],
+        chunkSize: req.headers['x-chunk-size'],
+        chunkCount: req.headers['x-chunk-count']
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ code: 0, status: 'chunk_received' }));
@@ -524,7 +747,7 @@ async function main() {
 
   const relayTaskId = `relay_${Date.now()}`;
   const relayPlaintext = crypto.randomBytes(4096);
-  const relaySealed = PROTO.encryptChunk(senderToDestKey, relayPlaintext, relayTaskId, 0);
+  const relaySealed = sealChunk(senderToDestKey, relayPlaintext, relayTaskId, 0, 1, relayPlaintext.length);
 
   const relayRes = await request('POST', '/api/v1/transfer/upload', {
     headers: {
@@ -533,6 +756,7 @@ async function main() {
       'X-File-Name': 'relayed.bin',
       'X-Chunk-Index': '0',
       'X-Chunk-Count': '1',
+      'X-Chunk-Size': String(relayPlaintext.length),
       'X-Encrypted': '1',
       'X-Session-Id': paired.sessionId,        // session with the hub
       'X-Target-Session-Id': destSessionId,    // session with the destination phone
@@ -551,8 +775,13 @@ async function main() {
     assert.ok(received[0].body.equals(relaySealed), 'forwarded bytes differ from what the sender sealed');
   });
 
+  check('the chunk geometry headers survive the relay hop', () => {
+    assert.strictEqual(received[0].chunkSize, String(relayPlaintext.length), 'X-Chunk-Size was not forwarded');
+    assert.strictEqual(received[0].chunkCount, '1', 'X-Chunk-Count was not forwarded');
+  });
+
   check('the destination can decrypt with the key it negotiated with the sender', () => {
-    const opened = PROTO.decryptChunk(destKey, received[0].body, relayTaskId, 0);
+    const opened = PROTO.decryptChunk(destKey, received[0].body, relayTaskId, 0, 1, relayPlaintext.length);
     assert.ok(opened.equals(relayPlaintext), 'decrypted content differs from the original plaintext');
   });
 
@@ -596,25 +825,107 @@ async function main() {
 
   const tlsTaskId = `tls_task_${Date.now()}`;
   const tlsPayload = crypto.randomBytes(200 * 1024);
-  const tlsUpload = await request('POST', '/api/v1/transfer/upload', {
-    host: LOOPBACK, tls: true, port: TLS_PORT,
-    headers: {
-      'Content-Type': 'application/octet-stream',
-      'X-Task-Id': tlsTaskId,
-      'X-File-Name': 'tls_encrypted.bin',
-      'X-Chunk-Index': '0',
-      'X-Chunk-Count': '1',
-      'X-Encrypted': '1',
-      'X-Session-Id': tlsInit.session_id
-    },
-    body: PROTO.encryptChunk(tlsKey, tlsPayload, tlsTaskId, 0)
+  const tlsStride = 100 * 1024 + 1;
+  const tlsChunks = Math.ceil(tlsPayload.length / tlsStride);
+  const tlsUploads = [];
+  for (let i = 0; i < tlsChunks; i++) {
+    const slice = tlsPayload.subarray(i * tlsStride, Math.min(tlsPayload.length, (i + 1) * tlsStride));
+    tlsUploads.push(await request('POST', '/api/v1/transfer/upload', {
+      host: LOOPBACK, tls: true, port: TLS_PORT,
+      headers: Object.assign({
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': 'tls_encrypted.bin',
+        'X-File-Size': String(tlsPayload.length),
+        'X-Encrypted': '1',
+        'X-Session-Id': tlsInit.session_id
+      }, chunkHeaders(tlsTaskId, i, tlsChunks, tlsStride)),
+      body: sealChunk(tlsKey, slice, tlsTaskId, i, tlsChunks, tlsStride)
+    }));
+  }
+  check('encrypted uploads are accepted over HTTPS', () => {
+    assert.ok(tlsUploads.every((r) => r.status === 200), `statuses: ${tlsUploads.map((r) => r.status).join(',')}`);
   });
-  check('encrypted upload is accepted over HTTPS', () => {
-    assert.strictEqual(tlsUpload.status, 200, `got ${tlsUpload.status}: ${tlsUpload.body}`);
+  check('the final HTTPS response reports completion', () => {
+    const last = JSON.parse(String(tlsUploads[tlsUploads.length - 1].body));
+    assert.strictEqual(last.status, 'completed', `got ${JSON.stringify(last)}`);
+    assert.strictEqual(last.file_size, tlsPayload.length, `reported ${last.file_size} bytes`);
   });
   check('HTTPS upload is decrypted correctly on disk', () => {
     const stored = fs.readFileSync(path.join(VAULT_DIR, 'tls_encrypted.bin'));
     assert.ok(stored.equals(tlsPayload), 'stored bytes differ from the plaintext sent');
+  });
+
+  console.log('\n▶ Section 10: the portal page browser crypto, executed as written');
+  // portal.html is self-contained on purpose (it is also copied verbatim into the APK assets), so
+  // its crypto cannot be imported. Lift the SafeDropCrypto block out of the HTML and run it
+  // unchanged against the hub, which is what actually proves the browser end speaks v2.
+  const portalSource = fs.readFileSync(path.join(__dirname, 'computer-design/desktop_hub/public/portal.html'), 'utf8');
+  const blockStart = portalSource.indexOf('const SafeDropCrypto = (() => {');
+  const blockEnd = portalSource.indexOf('\n      })();', blockStart);
+  check('the portal crypto block can be located in portal.html', () => {
+    assert.ok(blockStart > 0 && blockEnd > blockStart, 'SafeDropCrypto block not found - did portal.html change shape?');
+  });
+
+  const PortalCrypto = new Function('crypto', 'TextEncoder',
+    `${portalSource.slice(blockStart, blockEnd + '\n      })();'.length)}\nreturn SafeDropCrypto;`)(
+    require('crypto').webcrypto, TextEncoder
+  );
+
+  const fileBytes = crypto.randomBytes(1320);
+  const portalStride = 64;
+  const portalCount = Math.max(1, Math.ceil(fileBytes.length / portalStride));
+  const portalTaskId = `portal_${Date.now()}`;
+  let portalSession = null;
+
+  // Read the PIN off the screen the way a user would: every successful pairing rotates it, so the
+  // value captured at boot is only accepted while it stays inside the grace window.
+  const portalPin = String(json(await request('GET', '/api/v1/info', { host: LOOPBACK })).pin);
+
+  {
+    const pair = await PortalCrypto.generateKeyPair();
+    const rawPub = await PortalCrypto.exportPublicKey(pair);
+    const init = json(await request('POST', '/api/v1/handshake/init', {
+      host: LOOPBACK, tls: true, port: TLS_PORT,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ public_key: PortalCrypto.toHex(rawPub), curve: PortalCrypto.getCurve() })
+    }));
+    const shared = await PortalCrypto.deriveSharedSecret(pair, PortalCrypto.fromHex(init.server_public_key));
+    const keyBytes = await PortalCrypto.deriveSessionKeyBytes(shared, init.session_id, portalPin);
+    const proof = PortalCrypto.toHex(await PortalCrypto.clientProof(keyBytes, init.session_id));
+    const verify = json(await request('POST', '/api/v1/handshake/verify', {
+      host: LOOPBACK, tls: true, port: TLS_PORT,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: init.session_id, proof })
+    }));
+    const expectedServerProof = PortalCrypto.toHex(await PortalCrypto.serverProof(keyBytes, init.session_id));
+    check('the portal establishes a session the hub accepts, and authenticates the hub back', () => {
+      assert.strictEqual(verify.status, 'verified', `handshake gave ${JSON.stringify(verify)}`);
+      assert.strictEqual(verify.server_proof, expectedServerProof, 'the portal would have rejected this hub');
+    });
+    portalSession = { id: init.session_id, key: keyBytes };
+  }
+
+  const portalStatuses = [];
+  for (let i = 0; i < portalCount; i++) {
+    const slice = fileBytes.subarray(i * portalStride, Math.min(fileBytes.length, (i + 1) * portalStride));
+    const sealed = await PortalCrypto.encryptChunk(portalSession.key, slice, portalTaskId, i, portalCount, portalStride);
+    const res = await request('POST', '/api/v1/transfer/upload', {
+      host: LOOPBACK, tls: true, port: TLS_PORT,
+      headers: Object.assign({
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': 'from_portal.bin',
+        'X-File-Size': String(fileBytes.length),
+        'X-Encrypted': '1',
+        'X-Session-Id': portalSession.id
+      }, chunkHeaders(portalTaskId, i, portalCount, portalStride)),
+      body: Buffer.from(sealed)
+    });
+    portalStatuses.push(res.status);
+  }
+  check('the hub reassembles a multi-chunk upload sealed by the browser code', () => {
+    assert.ok(portalStatuses.every((s) => s === 200), `statuses: ${portalStatuses.join(',')}`);
+    const stored = fs.readFileSync(path.join(VAULT_DIR, 'from_portal.bin'));
+    assert.ok(stored.equals(fileBytes), `stored ${stored.length} bytes differ from the 1320 sent`);
   });
 
   shutdown();

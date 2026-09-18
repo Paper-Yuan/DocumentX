@@ -21,10 +21,18 @@
  */
 const os = require('os');
 
-/** Parse a dotted-quad IPv4 address into an unsigned 32-bit integer, or null if malformed. */
+/**
+ * Parse a dotted-quad IPv4 address into an unsigned 32-bit integer, or null if malformed.
+ *
+ * Only the canonical spelling is accepted. A leading zero ("010.1.2.3") is refused rather than
+ * normalised, because this function reads it as decimal 10 while the resolver underneath an
+ * outbound connection reads it as octal 8 - so a permissive parse here would let the guard
+ * approve one address and the socket connect to another.
+ */
 function ipv4ToUint(ip) {
   if (typeof ip !== 'string') return null;
-  const parts = ip.trim().split('.');
+  const trimmed = ip.trim();
+  const parts = trimmed.split('.');
   if (parts.length !== 4) return null;
   let value = 0;
   for (const part of parts) {
@@ -33,7 +41,9 @@ function ipv4ToUint(ip) {
     if (octet > 255) return null;
     value = value * 256 + octet;
   }
-  return value >>> 0;
+  value = value >>> 0;
+  if (uintToIpv4(value) !== trimmed) return null;
+  return value;
 }
 
 /** Render an unsigned 32-bit integer back to dotted-quad form. */

@@ -24,21 +24,58 @@ import javax.crypto.spec.SecretKeySpec
  * 1. Ephemeral X25519 (ECDH) key agreement per session.
  * 2. HKDF-SHA256 with a session-id-derived salt and the pairing secret as `info`, so the
  *    session key is bound to both the ECDH secret and the out-of-band PIN.
- * 3. AES-256-GCM per chunk with a fresh random 96-bit nonce, binding task id + chunk
- *    index as AAD so chunks cannot be reordered or moved between files.
+ * 3. AES-256-GCM per chunk with a fresh random 96-bit nonce. The AAD binds task id, chunk
+ *    index, chunk count and the sender's chunk stride, so a chunk cannot be moved between files
+ *    or positions, and the two headers the receiver uses to decide when a file is complete cannot
+ *    be rewritten on the path without breaking the tag.
  * 4. HMAC-SHA256 proofs, which let each side confirm the peer derived the same key.
+ *
+ * Every cross-end value comes from [ProtocolConst], which scripts/protocol.js generates from
+ * protocol.json; nothing in here may hardcode a number another implementation also needs.
  */
 class CryptoEngine {
 
     companion object {
-        const val CHUNK_SIZE = 1024 * 1024 // 1MB chunk size
-        const val IV_SIZE = 12 // 96-bit nonce
-        const val TAG_SIZE_BITS = 128
-        const val TAG_SIZE_BYTES = 16
-        const val PROTOCOL = "safedrop-e2e-v1"
-        const val KEY_SIZE_BYTES = 32
-
         private val secureRandom = SecureRandom()
+
+        /** A `{name}` slot in a protocol.json template. */
+        private val PLACEHOLDER = Regex("\\{(\\w+)\\}")
+
+        /**
+         * Fill a protocol.json template, refusing to invent a value for a missing variable.
+         *
+         * Unknown placeholders throw instead of being left in the output: a silently unfilled
+         * `{count}` still produces a byte string, so both ends would keep interoping - while
+         * authenticating a literal brace expression nobody intended. That is exactly how an
+         * authenticated field quietly stops being one.
+         */
+        private fun format(template: String, vararg pairs: Pair<String, String>): String {
+            val vars = pairs.toMap()
+            return PLACEHOLDER.replace(template) { match ->
+                val key = match.groupValues[1]
+                vars[key]
+                    ?: throw IllegalStateException("template \"$template\" is missing {$key}")
+            }
+        }
+
+        /**
+         * A chunk's geometry is what the completion decision is made from, so it is checked
+         * before a single byte is sealed or opened, and rejected rather than repaired. The limits
+         * are the same ones the hub applies in `chunkAad()`.
+         */
+        internal fun checkChunkGeometry(chunkIndex: Int, chunkCount: Int, chunkSize: Int) {
+            if (chunkCount < 1 || chunkCount > ProtocolConst.Chunking.MAX_CHUNKS_PER_TASK) {
+                throw IllegalArgumentException("chunk count out of range: $chunkCount")
+            }
+            if (chunkIndex < 0 || chunkIndex >= chunkCount) {
+                throw IllegalArgumentException(
+                    "chunk index $chunkIndex is outside a $chunkCount-chunk task"
+                )
+            }
+            if (chunkSize < 1 || chunkSize > ProtocolConst.Chunking.MAX_SEALED_CHUNK_BYTES) {
+                throw IllegalArgumentException("chunk size out of range: $chunkSize")
+            }
+        }
     }
 
     /**
@@ -50,12 +87,15 @@ class CryptoEngine {
     }
 
     /**
-     * Extract X25519 raw 32-byte public key
+     * Extract X25519 raw public key: the trailing bytes of the DER-encoded X509 SPKI.
      */
     fun extractRawPublicKey(keyPair: KeyPair): ByteArray {
         val encoded = keyPair.public.encoded
-        // DER-encoded X509 public key; the last 32 bytes are the raw X25519 public key
-        return encoded.copyOfRange(encoded.size - 32, encoded.size)
+        val rawLen = ProtocolConst.X25519_RAW_LEN_BYTES
+        if (encoded.size < rawLen) {
+            throw IllegalArgumentException("unexpected SPKI length: ${encoded.size} bytes")
+        }
+        return encoded.copyOfRange(encoded.size - rawLen, encoded.size)
     }
 
     /**
@@ -68,31 +108,38 @@ class CryptoEngine {
 
     /**
      * Salt bound to the session id, matching kdfSalt() in crypto_protocol.js:
-     * SHA-256("safedrop-e2e-v1|salt|" + sessionId).
+     * SHA-256("{protocol}|salt|{sessionId}").
      */
     fun deriveSalt(sessionId: String): ByteArray {
-        val material = "$PROTOCOL|salt|$sessionId".toByteArray(StandardCharsets.UTF_8)
-        return MessageDigest.getInstance("SHA-256").digest(material)
+        val material = format(ProtocolConst.TPL_KDF_SALT, "protocol" to ProtocolConst.PROTOCOL, "sessionId" to sessionId)
+        return MessageDigest.getInstance("SHA-256").digest(material.toByteArray(StandardCharsets.UTF_8))
     }
 
     /**
      * HKDF `info` carrying the pairing secret, matching kdfInfo() in crypto_protocol.js.
      */
     fun deriveInfo(pairingSecret: String): ByteArray {
-        return "$PROTOCOL|key|$pairingSecret".toByteArray(StandardCharsets.UTF_8)
+        return format(
+            ProtocolConst.TPL_KDF_INFO,
+            "protocol" to ProtocolConst.PROTOCOL,
+            "pairingSecret" to pairingSecret
+        ).toByteArray(StandardCharsets.UTF_8)
     }
 
     /**
      * Compute the raw X25519 ECDH shared secret with a peer's raw public key.
      */
     fun computeSharedSecret(localKeyPair: KeyPair, remoteRawPublicKey: ByteArray): ByteArray {
-        val x509Header = byteArrayOf(
-            0x30.toByte(), 0x2a.toByte(), 0x30.toByte(), 0x05.toByte(),
-            0x06.toByte(), 0x03.toByte(), 0x2b.toByte(), 0x65.toByte(),
-            0x6e.toByte(), 0x03.toByte(), 0x21.toByte(), 0x00.toByte()
-        )
+        if (remoteRawPublicKey.size != ProtocolConst.X25519_RAW_LEN_BYTES) {
+            throw IllegalArgumentException(
+                "raw x25519 public key must be ${ProtocolConst.X25519_RAW_LEN_BYTES} bytes, " +
+                        "got ${remoteRawPublicKey.size}"
+            )
+        }
         val keyFactory = KeyFactory.getInstance("X25519", "BC")
-        val remotePublicKey = keyFactory.generatePublic(X509EncodedKeySpec(x509Header + remoteRawPublicKey))
+        val remotePublicKey = keyFactory.generatePublic(
+            X509EncodedKeySpec(ProtocolConst.X25519_SPKI_PREFIX + remoteRawPublicKey)
+        )
 
         val ka = KeyAgreement.getInstance("X25519", "BC")
         ka.init(localKeyPair.private)
@@ -112,8 +159,8 @@ class CryptoEngine {
     ): SecretKey {
         val hkdf = HKDFBytesGenerator(SHA256Digest())
         hkdf.init(HKDFParameters(sharedSecret, deriveSalt(sessionId), deriveInfo(pairingSecret)))
-        val sessionKeyBytes = ByteArray(KEY_SIZE_BYTES)
-        hkdf.generateBytes(sessionKeyBytes, 0, KEY_SIZE_BYTES)
+        val sessionKeyBytes = ByteArray(ProtocolConst.KEY_LEN_BYTES)
+        hkdf.generateBytes(sessionKeyBytes, 0, ProtocolConst.KEY_LEN_BYTES)
         return SecretKeySpec(sessionKeyBytes, "AES")
     }
 
@@ -139,15 +186,18 @@ class CryptoEngine {
         return mac.doFinal(message.toByteArray(StandardCharsets.UTF_8))
     }
 
-    /** Proof the client derived the session key: HMAC(key, "safedrop-e2e-v1|verify|" + sessionId). */
+    /** Proof the client derived the session key: HMAC(key, "{protocol}|verify|{sessionId}"). */
     fun clientProof(sessionKey: SecretKey, sessionId: String): ByteArray {
-        return hmac(sessionKey, "$PROTOCOL|verify|$sessionId")
+        return hmac(sessionKey, kdfTemplate(ProtocolConst.TPL_CLIENT_PROOF, sessionId))
     }
 
-    /** Proof returned by the hub: HMAC(key, "safedrop-e2e-v1|server|" + sessionId). */
+    /** Proof returned by the hub: HMAC(key, "{protocol}|server|{sessionId}"). */
     fun serverProof(sessionKey: SecretKey, sessionId: String): ByteArray {
-        return hmac(sessionKey, "$PROTOCOL|server|$sessionId")
+        return hmac(sessionKey, kdfTemplate(ProtocolConst.TPL_SERVER_PROOF, sessionId))
     }
+
+    private fun kdfTemplate(template: String, sessionId: String): String =
+        format(template, "protocol" to ProtocolConst.PROTOCOL, "sessionId" to sessionId)
 
     /** Verify the hub's proof in constant time. */
     fun verifyServerProof(sessionKey: SecretKey, sessionId: String, proofHex: String): Boolean {
@@ -158,8 +208,24 @@ class CryptoEngine {
         }
     }
 
-    private fun chunkAad(taskId: String, chunkIndex: Int): ByteArray {
-        return "$PROTOCOL|chunk|$taskId|$chunkIndex".toByteArray(StandardCharsets.UTF_8)
+    /**
+     * AAD for one chunk: task id, index, count and the sender's stride, all four authenticated.
+     *
+     * The count and the stride are what turn "a chunk claiming to be the last one arrived" into
+     * "the sender committed to this many chunks and every one of them showed up". A receiver that
+     * reads them from plain headers instead cannot tell those two apart, because anything on the
+     * path can rewrite a header that is not covered by the tag.
+     */
+    fun chunkAad(taskId: String, chunkIndex: Int, chunkCount: Int, chunkSize: Int): ByteArray {
+        checkChunkGeometry(chunkIndex, chunkCount, chunkSize)
+        return format(
+            ProtocolConst.TPL_CHUNK_AAD,
+            "protocol" to ProtocolConst.PROTOCOL,
+            "taskId" to taskId,
+            "index" to chunkIndex.toString(),
+            "count" to chunkCount.toString(),
+            "chunkSize" to chunkSize.toString()
+        ).toByteArray(StandardCharsets.UTF_8)
     }
 
     /**
@@ -174,15 +240,20 @@ class CryptoEngine {
         plaintextChunk: ByteArray,
         sessionKey: SecretKey,
         taskId: String,
-        chunkIndex: Int
+        chunkIndex: Int,
+        chunkCount: Int,
+        chunkSize: Int
     ): ByteArray {
-        val nonce = ByteArray(IV_SIZE)
+        val nonce = ByteArray(ProtocolConst.NONCE_LEN_BYTES)
         secureRandom.nextBytes(nonce)
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding", "BC")
-        val spec = GCMParameterSpec(TAG_SIZE_BITS, nonce)
-        cipher.init(Cipher.ENCRYPT_MODE, sessionKey, spec)
-        cipher.updateAAD(chunkAad(taskId, chunkIndex))
+        cipher.init(
+            Cipher.ENCRYPT_MODE,
+            sessionKey,
+            GCMParameterSpec(ProtocolConst.TAG_LEN_BITS, nonce)
+        )
+        cipher.updateAAD(chunkAad(taskId, chunkIndex, chunkCount, chunkSize))
         val encryptedData = cipher.doFinal(plaintextChunk)
 
         return nonce + encryptedData
@@ -190,34 +261,38 @@ class CryptoEngine {
 
     /**
      * AES-256-GCM decrypt a chunk and verify its authentication tag. Throws if the tag does
-     * not verify, which covers tampering and a mismatched task id / chunk index alike.
+     * not verify, which covers tampering and a chunk replayed under a different task id, index,
+     * count or stride alike.
      */
     fun decryptChunk(
         encryptedChunk: ByteArray,
         sessionKey: SecretKey,
         taskId: String,
-        chunkIndex: Int
+        chunkIndex: Int,
+        chunkCount: Int,
+        chunkSize: Int
     ): ByteArray {
         require(encryptedChunk.isNotEmpty()) {
             "Encrypted chunk cannot be empty"
         }
 
-        val minSize = IV_SIZE + TAG_SIZE_BYTES
+        val minSize = ProtocolConst.NONCE_LEN_BYTES + ProtocolConst.TAG_LEN_BYTES
         require(encryptedChunk.size >= minSize) {
-            "Ciphertext too short: expected at least $minSize bytes (${IV_SIZE}B nonce + ${TAG_SIZE_BYTES}B tag), got ${encryptedChunk.size} bytes"
+            "sealed chunk too short: expected at least $minSize bytes " +
+                    "(${ProtocolConst.NONCE_LEN_BYTES}B nonce + ${ProtocolConst.TAG_LEN_BYTES}B tag), " +
+                    "got ${encryptedChunk.size} bytes"
         }
 
-        val nonce = encryptedChunk.copyOfRange(0, IV_SIZE)
-        val ciphertextWithTag = encryptedChunk.copyOfRange(IV_SIZE, encryptedChunk.size)
-
-        require(ciphertextWithTag.size >= TAG_SIZE_BYTES) {
-            "Ciphertext segment too short to contain authentication tag (got ${ciphertextWithTag.size} bytes)"
-        }
+        val nonce = encryptedChunk.copyOfRange(0, ProtocolConst.NONCE_LEN_BYTES)
+        val ciphertextWithTag = encryptedChunk.copyOfRange(ProtocolConst.NONCE_LEN_BYTES, encryptedChunk.size)
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding", "BC")
-        val spec = GCMParameterSpec(TAG_SIZE_BITS, nonce)
-        cipher.init(Cipher.DECRYPT_MODE, sessionKey, spec)
-        cipher.updateAAD(chunkAad(taskId, chunkIndex))
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            sessionKey,
+            GCMParameterSpec(ProtocolConst.TAG_LEN_BITS, nonce)
+        )
+        cipher.updateAAD(chunkAad(taskId, chunkIndex, chunkCount, chunkSize))
 
         return cipher.doFinal(ciphertextWithTag)
     }

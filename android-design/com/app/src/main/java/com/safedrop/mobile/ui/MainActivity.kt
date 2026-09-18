@@ -30,6 +30,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.safedrop.mobile.R
 import com.safedrop.mobile.core.crypto.CryptoEngine
+import com.safedrop.mobile.core.crypto.ProtocolConst
 import com.safedrop.mobile.core.network.DesktopHubClient
 import com.safedrop.mobile.core.network.MulticastLockHelper
 import com.safedrop.mobile.core.network.NetworkHelper
@@ -624,7 +625,7 @@ class MainActivity : AppCompatActivity() {
         val localIp = NetworkHelper.getLocalWifiIpv4(this)
 
         lifecycleScope.launch(Dispatchers.IO) {
-            hubClient.sendInstantMessage(
+            val sent = hubClient.sendInstantMessage(
                 host = activeDev.host,
                 port = activeDev.port,
                 text = text,
@@ -633,6 +634,15 @@ class MainActivity : AppCompatActivity() {
                 targetId = activeDev.id,
                 senderIp = localIp
             )
+            // The bubble was added optimistically; the hub only accepts messages from a paired
+            // session, so a rejection has to take it back rather than leave a phantom delivery.
+            if (!sent) {
+                runOnUiThread {
+                    list.remove(msg)
+                    updatePeerChatUI()
+                    Toast.makeText(this@MainActivity, "消息未送达：与对端的加密会话不可用（未配对或已过期）", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -1426,14 +1436,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Show Local Device Standalone Web Portal & Pairing QR Code Dialog
-     * Ordinary browsers scan to enter the Web Portal directly; SafeDrop app scans to pair
+     * Show Local Device Pairing QR Code Dialog
+     *
+     * This device serves its portal over plain HTTP, where a browser has no WebCrypto and
+     * therefore refuses to pair, so the code here is a SafeDrop device pairing code: it carries
+     * the fingerprint too, which the old http link dropped, and no longer hands the PIN to
+     * whatever camera or browser happens to scan it.
      */
     private fun showMyPairingQrDialog() {
         val localIp = NetworkHelper.getLocalWifiIpv4(this)
         val port = mobileTransferServer?.port ?: 8899
+        val fingerprint = mobileTransferServer?.fingerprint ?: ""
         val currentPin = mobileTransferServer?.currentPin ?: "123456"
-        val portalUrl = "http://$localIp:$port/portal?pin=$currentPin"
+        val currentToken = mobileTransferServer?.currentToken ?: ""
+        val pairingUri = "safedrop://pair?ip=$localIp&port=$port&fp=$fingerprint&token=$currentToken&pin=$currentPin"
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1442,7 +1458,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tvDesc = TextView(this).apply {
-            text = "📷 任何手机/电脑使用系统相机或浏览器扫码，直接进入免安装极速互传传送门；或使用 SafeDrop 手机端扫码直接配对。"
+            text = "📷 请用另一台 SafeDrop 设备的「扫码配对」扫描此码，两端会直接建立加密会话。\n" +
+                "浏览器免安装传送门只在 HTTPS 下才能加密，本机目前只提供 http，因此网页端可打开页面但无法配对。"
             textSize = 13f
             setTextColor(if (currentThemeMode == "light" || currentThemeMode == "eyecare") Color.parseColor("#334155") else Color.parseColor("#94A3B8"))
             setPadding(0, 0, 0, 24)
@@ -1470,7 +1487,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tvUrl = TextView(this).apply {
-            text = "🌐 直连网址: http://$localIp:$port/portal"
+            text = "🌐 本机地址: $localIp:$port（网页配对需 HTTPS，当前不可用）"
             textSize = 12f
             setTextColor(if (currentThemeMode == "light" || currentThemeMode == "eyecare") Color.parseColor("#475569") else Color.parseColor("#94A3B8"))
             setPadding(0, 0, 0, 16)
@@ -1486,7 +1503,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        updateQrImage(portalUrl)
+        updateQrImage(pairingUri)
 
         layout.addView(tvDesc)
         layout.addView(ivQr)
@@ -1494,7 +1511,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(tvUrl)
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle("📱 本机直连传送门 / 配对码")
+            .setTitle("📱 本机配对码")
             .setView(layout)
             .setNeutralButton("🔄 换一组") { _, _ -> }
             .setPositiveButton("完成", null)
@@ -1503,11 +1520,9 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
 
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
-            val (newPin, _) = mobileTransferServer?.refreshPairingPin() ?: Pair("123456", "")
-            val newUrl = "http://$localIp:$port/portal?pin=$newPin"
+            val (newPin, newToken) = mobileTransferServer?.refreshPairingPin() ?: Pair("123456", "")
             tvPin.text = "🔑 本机动态 PIN: $newPin"
-            tvUrl.text = "🌐 直连网址: http://$localIp:$port/portal"
-            updateQrImage(newUrl)
+            updateQrImage("safedrop://pair?ip=$localIp&port=$port&fp=$fingerprint&token=$newToken&pin=$newPin")
             Toast.makeText(this, "动态 PIN 与二维码已刷新: $newPin", Toast.LENGTH_SHORT).show()
         }
     }
@@ -1591,8 +1606,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Read up to [want] bytes into [buffer], returning how many were actually filled.
+     *
+     * One read() on a ContentResolver stream is free to return less than was asked for, and since
+     * protocol v2 every non-final chunk has to carry exactly the stride the sender committed to -
+     * so a short read would abort a transfer that is not in the slightest bit broken. A short
+     * result here therefore means end of stream, not a partial read.
+     */
+    private fun readChunkInto(stream: InputStream, buffer: ByteArray, want: Int): Int {
+        var filled = 0
+        while (filled < want) {
+            val read = stream.read(buffer, filled, want - filled)
+            if (read == -1) break
+            filled += read
+        }
+        return filled
+    }
+
+    /**
      * Stream chunked upload from Android to target peer (PC Desktop Hub or another Android phone).
-     * Chunks go out as plaintext; CryptoEngine is not wired into this path yet.
+     * Every chunk is sealed by [DesktopHubClient.uploadChunk] with the session key negotiated for
+     * that peer; an unpaired target is rejected before any byte leaves the device.
      */
     private fun startStreamingUpload(uri: Uri) {
         val fileName = resolveFileName(uri)
@@ -1674,7 +1708,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                val chunkSize = CryptoEngine.CHUNK_SIZE
+                val chunkSize = ProtocolConst.Chunking.PREFERRED_CHUNK_SIZE_BYTES
                 val totalChunks = ((fileSize + chunkSize - 1) / chunkSize).coerceAtLeast(1).toInt()
                 val buffer = ByteArray(chunkSize)
 
@@ -1683,8 +1717,8 @@ class MainActivity : AppCompatActivity() {
                 val startTime = System.currentTimeMillis()
 
                 inputStream.use { stream ->
-                    var bytesRead: Int
-                    while (stream.read(buffer).also { bytesRead = it } != -1) {
+                    while (chunkIndex < totalChunks) {
+                        val bytesRead = readChunkInto(stream, buffer, chunkSize)
                         val chunkData = if (bytesRead == chunkSize) buffer else buffer.copyOfRange(0, bytesRead)
 
                         val ok = hubClient.uploadChunk(
@@ -1695,6 +1729,7 @@ class MainActivity : AppCompatActivity() {
                             fileSize = fileSize,
                             chunkIndex = chunkIndex,
                             chunkCount = totalChunks,
+                            chunkSize = chunkSize,
                             chunkData = chunkData
                         )
 
