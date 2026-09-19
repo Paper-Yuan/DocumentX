@@ -86,3 +86,6 @@ Desktop.ini
 
 # Local hub settings: the vault directory is machine-specific and must never be committed.
 apps/desktop/desktop_hub/config.json
+
+# Everything the installer build produces. One folder, ignored whole.
+Safedrop_able/

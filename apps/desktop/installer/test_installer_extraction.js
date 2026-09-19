@@ -22,11 +22,11 @@ function it(desc, fn) {
 const INSTALLER_DIR = __dirname;
 // The installer lives three levels below the repository root: apps/desktop/installer.
 const ROOT_DIR = path.resolve(__dirname, '..', '..', '..');
-const setupExePath = path.join(ROOT_DIR, 'set', 'SafeDrop-Setup.exe');
+const setupExePath = path.join(ROOT_DIR, 'Safedrop_able', 'set', 'SafeDrop-Setup.exe');
 
 // 1. Physical existence & size in set folder
-it('SafeDrop-Setup.exe in set/ folder exists and has valid size (> 30MB)', () => {
-  assert(fs.existsSync(setupExePath), 'set/SafeDrop-Setup.exe does not exist');
+it('SafeDrop-Setup.exe in Safedrop_able/set exists and has valid size (> 30MB)', () => {
+  assert(fs.existsSync(setupExePath), 'Safedrop_able/set/SafeDrop-Setup.exe does not exist - run build_installer.js first');
   const stats = fs.statSync(setupExePath);
   assert(stats.size > 30 * 1024 * 1024, `Size too small: ${stats.size}`);
   console.log(`       set/SafeDrop-Setup.exe Size: ${(stats.size / (1024 * 1024)).toFixed(2)} MB (${stats.size} bytes)`);

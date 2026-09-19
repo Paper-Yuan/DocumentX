@@ -262,6 +262,14 @@ and nothing else**. It was not only taste — the old look had real defects behi
   without a config override, so every run of the multi-device suite left another
   `portal_test (N).txt` in whatever vault the local config pointed at. Each now gets a scratch
   vault in the system temp directory.
+- **Build output moved out of the source tree.** The installer's products - the setup exe, its
+  mirrored copy, and the portable launcher - now land in `Safedrop_able/`, which is ignored as a
+  whole, instead of dotting the repository root next to `README.md`. Location is one constant
+  (`ARTIFACTS_DIR`) rather than four scattered paths. The installer README had been pointing at
+  `e:\Workbox\DocumentX\set\...`, a developer's absolute path, as the output location.
+- **`test_installer_extraction.js` now actually tests the installer.** It had been looking for the
+  staged setup exe at a path that stopped existing after the layout move, so three of its five
+  checks failed on a machine that had a perfectly good installer sitting somewhere else.
 
 ### 🐛 Fixed — Small things the layout move and the redesign left behind
 

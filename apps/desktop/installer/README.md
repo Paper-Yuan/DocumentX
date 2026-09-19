@@ -26,8 +26,16 @@ node apps/desktop/installer/build_installer.js
 ```
 
 ### 构建输出：
-- 独立分发目录：`e:\Workbox\DocumentX\set\SafeDrop-Setup.exe`
-- 大小约为：**34 MB**（内含便携式 Node.js 运行时、启动器、卸载器及全部前端资产，用户电脑无需预装任何运行环境）。
+
+全部落在仓库根目录下的 `Safedrop_able/`（整个目录已 gitignore，源码树里不留产物）：
+
+| 产物 | 位置 | 说明 |
+|:---|:---|:---|
+| 安装包 | `Safedrop_able/set/SafeDrop-Setup.exe` | 构建的直接输出 |
+| 安装包副本 | `Safedrop_able/SafeDrop-Setup.exe` | 同一份的镜像，方便就地取用 |
+| 便携式启动器 | `Safedrop_able/SafeDrop.exe` | 不安装、直接在源码目录旁跑 |
+
+大小约为 **34 MB**（内含便携式 Node.js 运行时、启动器、卸载器及全部前端资产，用户电脑无需预装任何运行环境）。要换输出位置只改 `build_installer.js` 顶部的 `ARTIFACTS_DIR` 一处。
 
 ### 打包规则
 

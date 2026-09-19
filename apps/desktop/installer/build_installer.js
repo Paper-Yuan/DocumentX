@@ -25,9 +25,13 @@ const ROOT_DIR = path.resolve(__dirname, '..', '..', '..');
 const HUB_DIR = path.join(ROOT_DIR, 'apps', 'desktop', 'desktop_hub');
 const TEMP_DIR = path.join(INSTALLER_DIR, 'build_staging');
 const PAYLOAD_ZIP = path.join(INSTALLER_DIR, 'payload.zip');
-const SET_DIR = path.join(ROOT_DIR, 'set');
+// Build output lives outside the source tree, in one folder that is ignored wholesale.
+// Everything below (the portable launcher, the staged setup exe, the mirrored copy) is derived
+// from these, so changing the location is a one-line edit rather than a hunt.
+const ARTIFACTS_DIR = path.join(ROOT_DIR, 'Safedrop_able');
+const SET_DIR = path.join(ARTIFACTS_DIR, 'set');
 const SET_SETUP_EXE = path.join(SET_DIR, 'SafeDrop-Setup.exe');
-const ROOT_SETUP_EXE = path.join(ROOT_DIR, 'SafeDrop-Setup.exe');
+const ROOT_SETUP_EXE = path.join(ARTIFACTS_DIR, 'SafeDrop-Setup.exe');
 const CSC_PATH = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe';
 
 function cleanDir(dir) {
@@ -56,8 +60,9 @@ try {
   const launcherCs = path.join(INSTALLER_DIR, 'Launcher.cs');
   const launcherOut = path.join(INSTALLER_DIR, 'SafeDrop.exe');
   execSync(`"${CSC_PATH}" /target:winexe /win32icon:"${path.join(ROOT_DIR, 'app.ico')}" /out:"${launcherOut}" "${launcherCs}"`, { stdio: 'inherit' });
-  // Also keep launcher in root for direct portable execution
-  fs.copyFileSync(launcherOut, path.join(ROOT_DIR, 'SafeDrop.exe'));
+  // Also keep launcher in the artifacts folder for direct portable execution
+  if (!fs.existsSync(ARTIFACTS_DIR)) fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+  fs.copyFileSync(launcherOut, path.join(ARTIFACTS_DIR, 'SafeDrop.exe'));
   console.log('  -> SafeDrop.exe 编译成功');
 
   // Step 2: Compile uninstall.exe (Uninstaller)
@@ -147,7 +152,7 @@ try {
   if (fs.existsSync(launcherOut)) fs.unlinkSync(launcherOut);
   if (fs.existsSync(uninstallerOut)) fs.unlinkSync(uninstallerOut);
 
-  // Sync copy to root for convenience
+  // Mirror into the artifacts folder so the installer sits beside the portable launcher
   fs.copyFileSync(SET_SETUP_EXE, ROOT_SETUP_EXE);
 
   const setupStats = fs.statSync(SET_SETUP_EXE);
