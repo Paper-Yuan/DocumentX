@@ -282,10 +282,24 @@ and nothing else**. It was not only taste — the old look had real defects behi
   colour-debt registry shrank from three files to two. The ratchet was shown to bite in both
   directions: putting one `parseColor("#6366F1")` back fails the suite, and so does leaving a now
   clean file registered as debt.
-  **It is also dead code**: no layout inflates `RadarView` and nothing calls `setThemeMode()` or
-  `setConnectedDevice()`, so the phone's radar slot shows a static `ic_radar` drawable. That is
-  documented in the README rather than quietly fixed, because wiring it up is a visual decision
-  that cannot be reviewed on a machine with no emulator.
+  **It is no longer dead code.** `activity_main.xml` inflates it into the `cardRadar` slot in place
+  of the static `ic_radar` drawable — along with the two `bg_circle` ink plates that sat behind it,
+  which the dial's own rings and knocked-out centre node already draw — `MainActivity.applyThemeMode()`
+  hands it the mode the same way it hands the five adapters, and a new `updateRadarPeer()` calls
+  `setConnectedDevice()` with the peer this process holds a verified session for, or clears it.
+  That is as far as it is verified: with no emulator on this machine, whether the dial is the right
+  size on a real screen (`radar_dial_size`, 96dp default / 88dp at w320dp) is still a device
+  question, so the README keeps it in the compile-only list.
+  The view also had no way to stop its `ValueAnimator` short of being detached from the window, so
+  it ticked and invalidated with the screen off and while the page it sits on was hidden, and it
+  never consulted the system's animator duration scale. Both are fixed here: `onVisibilityAggregated`
+  (which covers visibility, window focus and screen state together) cancels and drops the animator
+  when the dial cannot be seen and rebuilds it when it can, and with animator duration scale off it
+  draws a single static frame instead of starting a loop that could never move. In an app that ships
+  a dialog asking OEMs not to kill it in the background, a radar burning frames behind a closed page
+  was not defensible.
+  One beacon per dial is also the view's own limit: several peers can be online at once, and only the
+  paired one appears, with the count badge still carrying the number.
 
 ### Planned
 - Resumable file transfer with breakpoint continuation — the authenticated chunk set and positional

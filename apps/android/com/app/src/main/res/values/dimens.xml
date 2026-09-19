@@ -59,6 +59,13 @@
     <dimen name="device_icon_size">48dp</dimen>
     <dimen name="device_card_min_height">80dp</dimen>
 
+    <!-- Radar dial (RadarView). The view reports no intrinsic size, so the slot has to name one.
+         Its own geometry sets the floor: it subtracts a 24px edge inset from half the box to get
+         the outer ring, then spaces the four range labels a quarter of that apart against 24px
+         text - under ~96dp on a typical phone the labels land on each other. Square on purpose:
+         the canvas draws from min(width, height). -->
+    <dimen name="radar_dial_size">96dp</dimen>
+
     <!-- Transfer Progress -->
     <dimen name="progress_bar_height">8dp</dimen>
     <dimen name="progress_bar_corner_radius">4dp</dimen>

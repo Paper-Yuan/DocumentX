@@ -24,7 +24,14 @@
     <dimen name="touch_target_min">48dp</dimen>
     <dimen name="icon_button_size">48dp</dimen>
     <dimen name="button_height_standard">48dp</dimen>
-    
+
+    <!-- One step down, so the text column and the online-count tag keep their row. Note the
+         direction this qualifier actually runs: w320dp matches screens *at least* 320dp wide, so
+         this number - not the 96dp default - is what nearly every phone resolves to, and 96dp is
+         already only just enough clearance for the four range labels. This is the first value to
+         raise back if a real device shows the labels crowded. -->
+    <dimen name="radar_dial_size">88dp</dimen>
+
     <!-- Compact bottom navigation -->
     <dimen name="bottom_nav_height">72dp</dimen>
     <dimen name="bottom_nav_icon_size">22dp</dimen>

@@ -153,31 +153,18 @@
                         android:paddingHorizontal="14dp"
                         android:paddingVertical="12dp">
 
-                        <FrameLayout
-                            android:layout_width="@dimen/touch_target_min"
-                            android:layout_height="@dimen/touch_target_min">
-
-                            <View
-                                android:id="@+id/beaconOuterRing"
-                                android:layout_width="@dimen/touch_target_min"
-                                android:layout_height="@dimen/touch_target_min"
-                                android:alpha="0.16"
-                                android:background="@drawable/bg_circle"
-                                android:backgroundTint="@color/ink" />
-
-                            <ImageView
-                                android:id="@+id/beaconInnerIcon"
-                                android:layout_width="34dp"
-                                android:layout_height="34dp"
-                                android:layout_gravity="center"
-                                android:background="@drawable/bg_circle"
-                                android:backgroundTint="@color/ink"
-                                android:contentDescription="@string/radar_title"
-                                android:padding="8dp"
-                                android:src="@drawable/ic_radar"
-                                app:tint="@color/on_primary" />
-
-                        </FrameLayout>
+                        <!-- The live dial, same instrument the desktop hub shows. RadarView reports
+                             no intrinsic size, so both sides are explicit: the geometry inside it
+                             (24px ring labels, a 24px edge inset) needs the room, and a smaller box
+                             stacks the four range labels on top of each other.
+                             No ink plate behind it: the rings, the crosshair and the knocked-out
+                             centre node already draw the plate, and the one chromatic mark the dial
+                             carries is the beacon for the paired peer. -->
+                        <com.safedrop.mobile.ui.radar.RadarView
+                            android:id="@+id/radarDial"
+                            android:layout_width="@dimen/radar_dial_size"
+                            android:layout_height="@dimen/radar_dial_size"
+                            android:contentDescription="@string/radar_title" />
 
                         <LinearLayout
                             android:layout_width="0dp"

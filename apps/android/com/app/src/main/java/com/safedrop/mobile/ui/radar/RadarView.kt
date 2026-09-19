@@ -96,7 +96,6 @@ class RadarView @JvmOverloads constructor(
 
     init {
         applyThemeColors()
-        startAnimation()
     }
 
     fun setThemeMode(theme: String) {
@@ -126,7 +125,40 @@ class RadarView @JvmOverloads constructor(
         beaconWavePaint.color = p.ready
     }
 
-    private fun startAnimation() {
+    private var animating = false
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        resumeSweep()
+    }
+
+    /**
+     * The dial only earns a frame callback while the user can see it. This callback covers
+     * visibility, window focus and screen state together, which is what stops a phone from
+     * redrawing a spinning radar behind another page or with the screen in its pocket - in an app
+     * that spends a whole dialog asking OEMs not to kill it in the background.
+     */
+    override fun onVisibilityAggregated(isVisible: Boolean) {
+        super.onVisibilityAggregated(isVisible)
+        if (isVisible) resumeSweep() else pauseSweep()
+    }
+
+    override fun onDetachedFromWindow() {
+        pauseSweep()
+        super.onDetachedFromWindow()
+    }
+
+    private fun resumeSweep() {
+        if (animating || !isAttachedToWindow) return
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            // Animator duration scale is off: a loop that invalidates a picture which can never
+            // move is pure battery drain, so draw one static frame and stop.
+            scanAngle = 0f
+            waveProgress = 0f
+            invalidate()
+            return
+        }
+        animating = true
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 3200
             repeatCount = ValueAnimator.INFINITE
@@ -139,6 +171,17 @@ class RadarView @JvmOverloads constructor(
             }
             start()
         }
+    }
+
+    /**
+     * Cancel and drop rather than pause-and-resume: the next sweep is built fresh, so there is no
+     * question of restarting an animator the framework has already finished with. The sweep
+     * restarting at the top of its arc reads as a rescan, not a glitch.
+     */
+    private fun pauseSweep() {
+        animating = false
+        animator?.cancel()
+        animator = null
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -228,10 +271,5 @@ class RadarView @JvmOverloads constructor(
             val deviceLabel = connectedName ?: connectedIp ?: "PC"
             canvas.drawText(deviceLabel, bx + 14f, by + 6f, textPaint)
         }
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        animator?.cancel()
     }
 }

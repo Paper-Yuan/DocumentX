@@ -101,7 +101,7 @@ cd apps/android/com
 - **UDP beacon 自发现**（`8890`，每 3 秒定向广播）与手机侧 `MulticastLock` 接收、以及 hub 对 Clash / TAP / TUN / vEthernet 网卡的过滤：代码在（`server.js` 的广播定时器、`getAllLocalIps`，Android 的 `UdpDiscoveryHelper.kt`），但**没有任何一条测试发过或收过一个 beacon**——仓库里连 `dgram` 的测试引用都没有。这条链路只能靠真机看界面确认。
 - **Tauri 外壳**：托盘、3 个全局快捷键、注册失败不阻断启动（`apps/desktop/tauri-app/src-tauri/src/main.rs`）。CI 不构建它，本次也没能在这台机器上跑完 `npx tauri build`，所以当前 `main` 的 Tauri 构建**未经验证**。
 - **Android 端全部行为**：前台服务保活、WakeLock、扫码配对、系统分享入口、分区存储写入、以及手机接收端的定位写入 / CORS / 限流。CI 的 Android job 没有模拟器，只跑 JVM 单元测试，所以这些只是"编译通过 + 加密实现与契约一致"。
-- **Android 的 `RadarView` 是一个没接上的自定义视图**：全项目没有任何 layout 实例化它，`MainActivity` 也从不调用它的 `setThemeMode()` / `setConnectedDevice()`；手机主界面那个"雷达"位上放的是一张静态 `ic_radar` 图标。它已经改成从共享 token 取色（不再有 Tailwind 时代的靛紫），但在被写进布局之前，**它对屏幕没有任何影响**——桌面端才有真正会转的雷达。
+- **Android 的雷达盘**：`activity_main.xml` 的 `cardRadar` 里现在放的是 `RadarView` 本体，替掉了那张静态 `ic_radar` 图标以及它身后两片 `bg_circle` 墨色圆盘；`MainActivity.applyThemeMode()` 像对待五个 adapter 那样把主题模式告诉它，`updateRadarPeer()` 只在**持有已验证会话**的那个 peer 上点亮信标（一块盘上唯一的一处色相，所以它说的是"配对上了"，不是"看见了"）。**但这一切实证只到"编译通过"为止**：这台机器没有模拟器，盘面尺寸（`radar_dial_size`，88/96dp）够不够让四个距离标签各占一行、信标落在哪，都只能上真机看。`RadarView` 的动画只在它**真被看见**时才走：`onVisibilityAggregated()` 一并覆盖可见性、窗口焦点和息屏三种情况，不可见就 cancel 并丢弃这个 animator（下次可见时重建，所以不存在"重启一个已被框架结束的 animator"这种问题）；系统把动画时长缩放关掉时（`ValueAnimator.areAnimatorsEnabled()` 为 false）根本不建循环，只画一帧静态盘——一块永远不会动的表盘持续 invalidate 纯粹是耗电。这两件事都是这次补上的，此前它除了 detach 没有任何停止入口。另外一块盘只画一个信标，所以同时在线的多台设备里只有配对的那一台会上盘——在线台数仍是那张徽标在说。
 - **Windows 安装包构建本身**：`build_installer.js` 的载荷校验逻辑有单测（第一档最后一行）；脚本自身的目录常量已随重构修正，但**没有跑过一次真实构建**（需要 Inno Setup 与 .NET 编译器），所以"安装包能出"这件事仍只有代码审阅级保证。
 
 ### 三 · 计划中（现在代码里没有）

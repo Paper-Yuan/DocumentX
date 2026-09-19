@@ -587,6 +587,29 @@ class MainActivity : AppCompatActivity() {
         return discoveredDevices.find { it.id == id } ?: discoveredDevices.firstOrNull()
     }
 
+    /**
+     * Point the radar's one beacon at the peer this device actually holds a session with.
+     *
+     * The beacon is the only chromatic mark on the dial, so under the ink-first contract it means
+     * "paired", not "seen": discovery can list several online peers - the count badge on the same
+     * card says so - while RadarView.setConnectedDevice() takes one, and the one it gets is the
+     * active peer when that peer is the paired one. With no session the dial scans an empty field,
+     * which is the truth on a fresh launch: sessions live in memory only, so a restart has nothing
+     * paired until a code is read again.
+     */
+    private fun updateRadarPeer() {
+        val paired = sequenceOf(getActivePeer(), selectedTargetDevice)
+            .filterNotNull()
+            .firstOrNull { hubClient.hasSession(it.host, it.port) }
+            ?: discoveredDevices.firstOrNull { hubClient.hasSession(it.host, it.port) }
+
+        if (paired == null) {
+            binding.radarDial.setConnectedDevice(null)
+        } else {
+            binding.radarDial.setConnectedDevice(paired.host, paired.name)
+        }
+    }
+
     private fun openPeerChatWindow(dev: DiscoveredDevice) {
         activePeerId = dev.id
         selectedTargetDevice = dev
@@ -600,6 +623,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updatePeerChatUI() {
+        // Every change to the peer set or the selected peer lands here, which makes it the one
+        // place that knows what "connected" currently means. The dial asks it on each pass.
+        updateRadarPeer()
+
         if (discoveredDevices.isEmpty()) {
             binding.layoutNoPeerState.visibility = View.VISIBLE
             binding.layoutActivePeerContent.visibility = View.GONE
@@ -703,6 +730,11 @@ class MainActivity : AppCompatActivity() {
         peerChipAdapter.setThemeMode(theme)
         channelMessageAdapter.setThemeMode(theme)
 
+        // The radar dial is a View, not an adapter, and it takes the same treatment: it pulls every
+        // paint from Palette itself, so all it is told here is which mode is on. applyChrome() has
+        // nothing to say about it - see the ink plates that used to sit under the dial.
+        binding.radarDial.setThemeMode(theme)
+
         applyChrome(Palette.of(this, theme))
     }
 
@@ -763,10 +795,9 @@ class MainActivity : AppCompatActivity() {
         b.btnCryptoToggle.setTextColor(p.inkMuted)
         b.btnShowMyQrFromSettings.setTextColor(p.inkMuted)
 
-        // The beacon is a status lamp: ink for the ring, the ready hue only for "something is there".
-        b.beaconOuterRing.backgroundTintList = p.states(p.ready)
-        b.beaconInnerIcon.backgroundTintList = p.states(p.ready)
-        b.beaconInnerIcon.imageTintList = p.states(p.onInk)
+        // The ink-plate beacon that used to sit here is gone: the dial at the head of this card now
+        // carries that state itself, painting its own rings from Palette and its one ready-hue
+        // beacon from updateRadarPeer(). Nothing is tinted here because nothing is left to tint.
         b.tvOnlineCountTag.backgroundTintList = p.states(p.raised)
         b.tvOnlineCountTag.setTextColor(p.inkMuted)
 
@@ -1743,6 +1774,9 @@ class MainActivity : AppCompatActivity() {
                         }
                         return@launch
                     }
+                    // A session made here is invisible to the pairing sheet's paths, so the dial is
+                    // told about it directly rather than waiting for the next peer-list change.
+                    withContext(Dispatchers.Main) { updateRadarPeer() }
                 }
 
                 val chunkSize = ProtocolConst.Chunking.PREFERRED_CHUNK_SIZE_BYTES
