@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Camera viewfinder. The camera permission is not a dead end any more: when it is refused, the
+  same activity shows why it is being asked for and offers the settings page, a retry, and the
+  pairing sheet that does not need a camera at all.
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black">
+    android:background="@color/background_dark">
 
     <!-- CameraX live preview -->
     <androidx.camera.view.PreviewView
@@ -13,55 +19,61 @@
 
     <!-- Top back button and title -->
     <LinearLayout
+        android:id="@+id/layoutScannerHeader"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#80000000"
+        android:background="#800B0D0F"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="16dp">
+        android:padding="12dp">
 
         <ImageView
             android:id="@+id/btnBack"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:src="@drawable/ic_radar"
-            app:tint="@android:color/white" />
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_ripple_secondary"
+            android:contentDescription="@string/pairing_action_cancel"
+            android:padding="9dp"
+            android:src="@drawable/ic_scan"
+            app:tint="@color/ink" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="8dp"
+            android:fontFamily="sans-serif-medium"
             android:text="@string/action_scan"
-            android:textColor="@android:color/white"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textColor="@color/ink"
+            android:textSize="15sp"
+            android:textStyle="normal" />
     </LinearLayout>
 
-    <!-- Scanner reticle viewfinder frame -->
+    <!-- Viewfinder frame -->
     <FrameLayout
-        android:layout_width="260dp"
-        android:layout_height="260dp"
+        android:id="@+id/layoutReticle"
+        android:layout_width="240dp"
+        android:layout_height="240dp"
         android:layout_gravity="center">
 
-        <!-- Outer border -->
         <View
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@drawable/ic_launcher"
-            android:backgroundTint="#2006B6D4" />
+            android:background="@drawable/bg_scan_reticle" />
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="-36dp"
+            android:layout_marginBottom="-34dp"
+            android:gravity="center"
             android:text="@string/scan_hint"
-            android:textColor="#E2E8F0"
-            android:textSize="13sp" />
+            android:textColor="@color/ink_muted"
+            android:textSize="12sp" />
     </FrameLayout>
 
-    <!-- Fallback action: Manual PIN entry -->
+    <!-- Fallback action: type the code instead of scanning it -->
     <LinearLayout
+        android:id="@+id/layoutScannerFooter"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
@@ -71,12 +83,91 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnManualPin"
-            style="@style/Widget.Material3.Button.TonalButton"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="无法扫码？手动输入 PIN 码"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#40334155" />
+            android:text="@string/camera_manual_entry"
+            android:textColor="@color/ink"
+            android:textSize="13sp"
+            app:cornerRadius="@dimen/radius_medium" />
+    </LinearLayout>
+
+    <!-- Permission state: covers the (dark) preview with its own sheet -->
+    <LinearLayout
+        android:id="@+id/layoutPermissionState"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_scrim_dark"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="28dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="@string/camera_permission_required"
+            android:src="@drawable/ic_qr_code"
+            app:tint="@color/ink_muted" />
+
+        <TextView
+            android:id="@+id/tvPermissionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:text="@string/camera_rationale_title"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="normal" />
+
+        <TextView
+            android:id="@+id/tvPermissionBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:text="@string/camera_rationale_body"
+            android:textColor="@color/ink_muted"
+            android:textSize="13sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenAppSettings"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/button_height_standard"
+            android:layout_marginTop="24dp"
+            android:minWidth="200dp"
+            android:text="@string/camera_open_settings"
+            android:textColor="@color/on_primary"
+            android:textSize="14sp"
+            app:backgroundTint="@color/primary"
+            app:cornerRadius="@dimen/radius_medium" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnRetryPermission"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/button_height_compact"
+            android:layout_marginTop="4dp"
+            android:text="@string/camera_retry"
+            android:textColor="@color/ink_muted"
+            android:textSize="13sp"
+            app:cornerRadius="@dimen/radius_medium" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnPermissionManualPin"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/button_height_compact"
+            android:text="@string/camera_manual_entry"
+            android:textColor="@color/ink_muted"
+            android:textSize="13sp"
+            app:cornerRadius="@dimen/radius_medium" />
+
     </LinearLayout>
 
 </FrameLayout>

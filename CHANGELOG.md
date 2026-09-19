@@ -167,6 +167,60 @@ ends drifted apart in the first place.
   twelve-hour cap, CORS answers per origin instead of `*`, and the phone refuses to serve an
   unencrypted fallback portal page if the bundled one cannot be loaded.
 
+### 🎨 Changed — The interface stops looking like a template
+
+Both ends were rebuilt around one rule: **neutral surfaces carry the structure, colour means state
+and nothing else**. It was not only taste — the old look had real defects behind it.
+
+- **The UI no longer needs the internet to draw text.** `index.html` loaded Plus Jakarta Sans and
+  `portal.html` loaded *Outfit*, both from `fonts.googleapis.com`. A zero-install page that is meant
+  to work on a LAN with no uplink was blocking its own typography on a remote host, and the two
+  browser surfaces of one product were using two different typefaces. Webfont links are gone; the
+  system UI stack renders identically offline, on Windows and on the phone.
+- **One colour system, actually shared.** The desktop was indigo→violet, Android was blue→cyan, and
+  `colors.xml` claimed to be "Aligned with desktop" while nothing compared them. Both now resolve
+  the same ink + four semantic hues, with the hues lifted for text on dark surfaces so they still
+  clear 4.5:1. No brand gradient, no glow ring, no blurred panel survives.
+- **The radar is an instrument now.** Thin rings, a crosshair, a restrained sweep, and a green dot
+  per peer — the one characterful element on the screen, with everything around it kept quiet.
+- **Machine values are monospace with tabular figures**: `ip:port`, sizes, speeds, `3/7` chunk
+  counts, pairing codes, fingerprints. They stop re-flowing as digits change width.
+- **Jargon moved out of the way, emoji out of the vocabulary.** "UDP 8890 探针与握手通道",
+  "X25519 + AES-256-GCM 验签落盘" and the rest now sit behind a 技术细节 disclosure; labels say what
+  the user controls ("已接收文件", not "保险箱 (已接收)").
+- **Pairing no longer asks you to type into a browser prompt.** The desktop's `window.prompt` is
+  replaced by a real dialog that names the device it is asking about, takes a pasted
+  `safedrop://pair?…` link (what the phone's QR already encodes) and prefills address and code from
+  it, and reports failures inline with the reason — including a version mismatch, which used to
+  surface as "check the code". Handshake requests now carry a timeout, so a dead peer cannot hang
+  the sheet forever.
+- **A failed transfer is recoverable in place**: 重试 on the row, and copy that says what happens
+  ("文件还在原来的位置，没有改动。点重试会从头再传一次。"). Previously a failed row had no controls
+  at all and the only way out was to start over from the device list.
+- **Android pairing sheet** does the same: one monospace field, auto-submit at six digits, paste a
+  pairing URI, and it polls the peer so "对方已换新配对码" updates in place instead of telling the
+  user to walk over to the other device and press a button.
+- **Dead ends closed on Android**: no camera permission used to toast and `finish()`, dumping the
+  user back at the main screen — it now offers the system setting or the pairing code instead; file
+  selection is multi-select like the desktop; a finished download says where the file went.
+- **Two controls that lied were removed.** `autoAcceptToggle` was never read by any code, and the
+  theme swatches' `✓` prefix widened the selected button and shoved its neighbours sideways —
+  selection is the border, plus a screen-reader suffix.
+
+### 🐛 Fixed — Found while rebuilding the interface
+
+- **Six Android strings existed only in `values-zh/`.** The default `values/strings.xml` is Chinese,
+  so a Chinese phone never noticed — but on any other system locale, reaching a code path that read
+  one of them (e.g. "找不到对方设备") threw `ResourceNotFoundException`. The duplicate
+  `values-zh/` and `values-zh-rCN/` folders are gone and the app has one strings file; the two
+  folders had 108 keys overlapping the default, one of which had already drifted, and `values-zh-rCN`
+  was byte-for-byte the same list as `values-zh`.
+- **Device cards clipped their own content.** A grid item defaults to `min-width: auto`, so a card
+  whose address and fingerprint chips could not shrink forced its track wider and pushed the next
+  card past the container; the meta row then sliced the fingerprint chip mid-glyph. Tracks can now
+  shrink and the chips wrap onto a second line.
+- The drop zone said "选择文件" twice — as the heading and as the button.
+
 ### Planned
 - Resumable file transfer with breakpoint continuation — the authenticated chunk set and positional
   writes landed above, so only the persisted progress cursor is left

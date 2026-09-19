@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Peer tab. The dot is the only chromatic thing here, and it means exactly one thing: ready. -->
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/chipCard"
     android:layout_width="wrap_content"
     android:layout_height="@dimen/button_height_compact"
@@ -8,9 +10,10 @@
     android:clickable="true"
     android:focusable="true"
     app:cardBackgroundColor="@color/surface_dark"
-    app:cardCornerRadius="22dp"
+    app:cardCornerRadius="@dimen/radius_medium"
+    app:cardElevation="0dp"
     app:strokeColor="@color/border_dark"
-    app:strokeWidth="1dp">
+    app:strokeWidth="@dimen/hairline_width">
 
     <LinearLayout
         android:layout_width="wrap_content"
@@ -24,26 +27,31 @@
             android:id="@+id/ivChipIcon"
             android:layout_width="20dp"
             android:layout_height="20dp"
+            android:contentDescription="@string/radar_title"
             android:src="@drawable/ic_device_pc"
-            app:tint="@color/secondary" />
+            app:tint="@color/ink_muted" />
 
         <TextView
             android:id="@+id/tvChipName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/spacing_small"
-            android:text="Windows PC"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxWidth="140dp"
+            android:maxLines="1"
             android:textColor="@color/text_primary_dark"
             android:textSize="@dimen/text_size_caption"
-            android:textStyle="bold" />
+            android:textStyle="normal"
+            tools:text="Windows PC" />
 
         <View
             android:id="@+id/vChipStatusDot"
-            android:layout_width="8dp"
-            android:layout_height="8dp"
+            android:layout_width="6dp"
+            android:layout_height="6dp"
             android:layout_marginStart="@dimen/spacing_xsmall"
             android:background="@drawable/bg_circle"
-            android:backgroundTint="@color/success" />
+            android:backgroundTint="@color/online_status" />
 
     </LinearLayout>
 

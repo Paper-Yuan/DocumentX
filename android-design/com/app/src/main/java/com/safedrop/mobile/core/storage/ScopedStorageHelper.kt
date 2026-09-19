@@ -135,6 +135,8 @@ class ScopedStorageHelper(private val context: Context) {
         val partFile = getTempPartFile(taskId, fileName)
         if (!partFile.exists() || partFile.length() == 0L) return null
 
+        // Deliberately not mimeTypeFor(): that one answers "*/*" for an unknown name, which is
+        // fine for an intent filter but not for the MIME column MediaStore indexes on.
         val mimeType = when {
             isMediaFile(fileName) -> if (fileName.lowercase().endsWith(".mp4")) "video/mp4" else "image/jpeg"
             fileName.lowercase().endsWith(".pdf") -> "application/pdf"
@@ -159,27 +161,30 @@ class ScopedStorageHelper(private val context: Context) {
     private var currentStorageType = "download"
 
     /**
-     * Set customized storage destination type and return user-facing path string
+     * Set customized storage destination type and return the path shown to the user.
+     *
+     * Path only, no prose: the field it lands in is monospace and holds a filesystem location.
      */
     fun setCustomStorageType(type: String): String {
         currentStorageType = type
-        return when (type) {
-            "pictures" -> "相册自适应目录: Pictures/SafeDrop"
-            "private" -> "应用私有沙箱: Android/data/com.safedrop.mobile"
-            else -> "公共下载目录: Download/SafeDrop"
-        }
+        return storagePathFor(type)
+    }
+
+    private fun storagePathFor(type: String): String = when (type) {
+        "pictures" -> "Pictures/SafeDrop"
+        "private" -> "Android/data/com.safedrop.mobile"
+        else -> "Download/SafeDrop"
     }
 
     /**
      * User-facing display description of active storage location
      */
-    fun getStorageDisplayPath(): String {
-        return when (currentStorageType) {
-            "pictures" -> "相册自适应目录: Pictures/SafeDrop"
-            "private" -> "应用私有沙箱: Android/data/com.safedrop.mobile"
-            else -> "公共下载目录: Download/SafeDrop (相册媒体存入 Pictures/SafeDrop)"
-        }
-    }
+    fun getStorageDisplayPath(): String = storagePathFor(currentStorageType)
+
+    /**
+     * The type key the picker is currently on, so a re-opened dialog can mark it.
+     */
+    fun getStorageType(): String = currentStorageType
 
     /**
      * Create intent to view downloads folder in system file manager
@@ -266,40 +271,95 @@ class ScopedStorageHelper(private val context: Context) {
     }
 
     /**
-     * Open a file using system default application
+     * Open a file using the system default viewer.
+     *
+     * @return false when nothing on the device can take this MIME type, so the caller can say so
+     *         in the UI instead of swallowing the failure.
      */
-    fun openFile(fileItem: VaultFileItem) {
+    fun openFile(fileItem: VaultFileItem): Boolean {
         val file = File(fileItem.path)
-        if (!file.exists()) return
-
-        val uri = try {
-            androidx.core.content.FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
-        } catch (e: Exception) {
-            Uri.fromFile(file)
-        }
-
-        val mimeType = when {
-            fileItem.name.lowercase().endsWith(".jpg") || fileItem.name.lowercase().endsWith(".jpeg") -> "image/jpeg"
-            fileItem.name.lowercase().endsWith(".png") -> "image/png"
-            fileItem.name.lowercase().endsWith(".mp4") -> "video/mp4"
-            fileItem.name.lowercase().endsWith(".pdf") -> "application/pdf"
-            fileItem.name.lowercase().endsWith(".txt") -> "text/plain"
-            fileItem.name.lowercase().endsWith(".zip") -> "application/zip"
-            else -> "*/*"
-        }
+        if (!file.exists()) return false
 
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType)
+            setDataAndType(contentUriFor(file), mimeTypeFor(fileItem.name))
             flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
-        try {
+        return try {
             context.startActivity(intent)
+            true
         } catch (e: Exception) {
-            android.widget.Toast.makeText(context, "未找到能打开此文件的应用: ${fileItem.name}", android.widget.Toast.LENGTH_SHORT).show()
+            Log.w(tag, "No viewer for ${fileItem.name}: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Hand a received file to another app (mail, chat, editor) through the system chooser, so a
+     * file that arrived in the vault is not trapped there.
+     *
+     * @return false when the file is gone or no app will take it.
+     */
+    fun shareFile(fileItem: VaultFileItem): Boolean {
+        val file = File(fileItem.path)
+        if (!file.exists()) return false
+        return try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = mimeTypeFor(fileItem.name)
+                putExtra(android.content.Intent.EXTRA_STREAM, contentUriFor(file))
+                flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+            val title = fileItem.name.ifEmpty {
+                context.getString(com.safedrop.mobile.R.string.transfer_share_file)
+            }
+            context.startActivity(
+                android.content.Intent.createChooser(intent, title)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            true
+        } catch (e: Exception) {
+            Log.w(tag, "Nothing accepted a share of ${fileItem.name}: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Look a received file up by name, for the transfer row that only knows what it was called.
+     */
+    fun findVaultFile(fileName: String): VaultFileItem? {
+        val files = getVaultFiles()
+        return files.firstOrNull { it.name == fileName }
+            ?: files.firstOrNull { it.name.substringBeforeLast('.') == fileName.substringBeforeLast('.') }
+    }
+
+    /**
+     * A content:// URI another app may read. FileProvider covers the roots in file_paths.xml;
+     * the raw file:// form is only reached on the pre-scoped-storage fallback.
+     */
+    private fun contentUriFor(file: File): Uri = try {
+        androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+    } catch (e: Exception) {
+        Uri.fromFile(file)
+    }
+
+    /**
+     * MIME type for a name, shared by the open and the share path so they cannot drift.
+     */
+    fun mimeTypeFor(fileName: String): String {
+        val lower = fileName.lowercase()
+        return when {
+            lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+            lower.endsWith(".png") -> "image/png"
+            lower.endsWith(".webp") -> "image/webp"
+            lower.endsWith(".mp4") -> "video/mp4"
+            lower.endsWith(".pdf") -> "application/pdf"
+            lower.endsWith(".txt") -> "text/plain"
+            lower.endsWith(".zip") -> "application/zip"
+            lower.endsWith(".apk") -> "application/vnd.android.package-archive"
+            else -> "*/*"
         }
     }
 

@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Count / status chip. 4dp, not a 999dp pill: it sits next to monospace numbers and has to
+     look like part of the panel. Fill follows the active theme instead of a baked-in hex. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <corners android:radius="999dp" />
-    <solid android:color="#1F2937" />
+    <corners android:radius="@dimen/radius_small" />
+    <solid android:color="?attr/colorSurfaceVariant" />
+    <stroke
+        android:width="@dimen/hairline_width"
+        android:color="?attr/colorOutline" />
 </shape>

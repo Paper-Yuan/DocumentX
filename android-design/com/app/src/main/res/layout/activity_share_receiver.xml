@@ -1,37 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/ic_launcher"
-    android:backgroundTint="@color/surface_dark"
+    android:background="@color/surface_dark"
     android:orientation="vertical"
     android:padding="20dp">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-medium"
         android:text="@string/share_target_title"
         android:textColor="@color/text_primary_dark"
-        android:textSize="18sp"
-        android:textStyle="bold" />
+        android:textSize="17sp"
+        android:textStyle="normal" />
 
     <TextView
         android:id="@+id/tvShareFileInfo"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:text="已选取 1 个文件待投送"
-        android:textColor="@color/text_secondary_dark"
-        android:textSize="13sp" />
+        android:ellipsize="middle"
+        android:fontFamily="monospace"
+        android:maxLines="2"
+        android:textColor="@color/text_muted_dark"
+        android:textSize="12sp"
+        tools:text="已选取 1 个文件" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.08"
         android:text="@string/select_pc_hint"
-        android:textColor="@color/text_primary_dark"
-        android:textSize="14sp" />
+        android:textColor="@color/text_muted_dark"
+        android:textSize="@dimen/text_size_eyebrow"
+        android:textStyle="normal" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvShareDevices"

@@ -1,10 +1,10 @@
 package com.safedrop.mobile.ui.adapter
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.safedrop.mobile.databinding.ItemPeerChipBinding
+import com.safedrop.mobile.ui.Palette
 
 class PeerChipAdapter(
     private val onPeerSelected: (DiscoveredDevice) -> Unit
@@ -60,50 +60,28 @@ class PeerChipAdapter(
                 else com.safedrop.mobile.R.drawable.ic_device_pc
             )
 
-            // Theme adaptation
-            when (theme) {
-                "eyecare" -> {
-                    if (isSelected) {
-                        binding.chipCard.setCardBackgroundColor(Color.parseColor("#CDE8D5"))
-                        binding.chipCard.strokeColor = Color.parseColor("#2E5C38")
-                        binding.chipCard.strokeWidth = 3
-                        binding.tvChipName.setTextColor(Color.parseColor("#000000"))
-                    } else {
-                        binding.chipCard.setCardBackgroundColor(Color.parseColor("#F5EDDC"))
-                        binding.chipCard.strokeColor = Color.parseColor("#D5C7AA")
-                        binding.chipCard.strokeWidth = 1
-                        binding.tvChipName.setTextColor(Color.parseColor("#3D382B"))
-                    }
-                }
-                "light" -> {
-                    if (isSelected) {
-                        binding.chipCard.setCardBackgroundColor(Color.parseColor("#E0E7FF"))
-                        binding.chipCard.strokeColor = Color.parseColor("#4F46E5")
-                        binding.chipCard.strokeWidth = 3
-                        binding.tvChipName.setTextColor(Color.parseColor("#1E1B4B"))
-                    } else {
-                        binding.chipCard.setCardBackgroundColor(Color.parseColor("#FFFFFF"))
-                        binding.chipCard.strokeColor = Color.parseColor("#E2E8F0")
-                        binding.chipCard.strokeWidth = 1
-                        binding.tvChipName.setTextColor(Color.parseColor("#64748B"))
-                    }
-                }
-                else -> {
-                    if (isSelected) {
-                        binding.chipCard.setCardBackgroundColor(Color.parseColor("#312E81"))
-                        binding.chipCard.strokeColor = Color.parseColor("#818CF8")
-                        binding.chipCard.strokeWidth = 3
-                        binding.tvChipName.setTextColor(Color.parseColor("#FFFFFF"))
-                    } else {
-                        binding.chipCard.setCardBackgroundColor(Color.parseColor("#1F2937"))
-                        binding.chipCard.strokeColor = Color.parseColor("#374151")
-                        binding.chipCard.strokeWidth = 1
-                        binding.tvChipName.setTextColor(Color.parseColor("#9CA3AF"))
-                    }
-                }
+            // The selected tab is marked with ink weight, not with a hue: hue is spent on state.
+            val p = Palette.of(binding.root.context, theme)
+            if (isSelected) {
+                binding.chipCard.setCardBackgroundColor(p.raised)
+                binding.chipCard.strokeColor = p.ink
+                binding.chipCard.strokeWidth = dp(binding.root.context, 1.5f)
+                binding.tvChipName.setTextColor(p.ink)
+                binding.ivChipIcon.imageTintList = p.states(p.ink)
+            } else {
+                binding.chipCard.setCardBackgroundColor(p.surface)
+                binding.chipCard.strokeColor = p.hairline
+                binding.chipCard.strokeWidth = dp(binding.root.context, 1f)
+                binding.tvChipName.setTextColor(p.inkMuted)
+                binding.ivChipIcon.imageTintList = p.states(p.inkFaint)
             }
+            binding.vChipStatusDot.backgroundTintList =
+                p.states(if (peer.isOnline) p.ready else p.inkFaint)
 
             binding.root.setOnClickListener { onSelect(peer) }
         }
+
+        private fun dp(context: android.content.Context, value: Float): Int =
+            (value * context.resources.displayMetrics.density).toInt()
     }
 }

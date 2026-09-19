@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Transfer task row. Currently not on screen (the conversation view carries the same rows),
+   but it stays on the shared token set so a future surface does not reintroduce the old pills. -->
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/cardTransferTask"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="10dp"
+    android:layout_marginBottom="8dp"
     app:cardBackgroundColor="@color/surface_dark"
-    app:cardCornerRadius="16dp"
+    app:cardCornerRadius="@dimen/radius_large"
+    app:cardElevation="0dp"
     app:strokeColor="@color/border_dark"
-    app:strokeWidth="1dp">
+    app:strokeWidth="@dimen/hairline_width">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -24,13 +28,14 @@
 
             <ImageView
                 android:id="@+id/ivTaskDirection"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/ic_launcher"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="@drawable/bg_badge_rounded"
                 android:backgroundTint="@color/surface_variant_dark"
+                android:contentDescription="@string/transferring"
                 android:padding="@dimen/spacing_small"
                 android:src="@drawable/ic_download"
-                app:tint="@color/secondary" />
+                app:tint="@color/ink" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -41,36 +46,39 @@
 
                 <TextView
                     android:id="@+id/tvTaskFileName"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:ellipsize="middle"
+                    android:fontFamily="sans-serif-medium"
                     android:singleLine="true"
-                    android:text="example_file.mp4"
                     android:textColor="@color/text_primary_dark"
                     android:textSize="@dimen/text_size_body"
-                    android:textStyle="bold" />
+                    android:textStyle="normal"
+                    tools:text="example_file.mp4" />
 
                 <TextView
                     android:id="@+id/tvTaskDevice"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/spacing_xxxsmall"
-                    android:text="来自: Windows 桌面中枢端"
-                    android:textColor="@color/text_secondary_dark"
-                    android:textSize="@dimen/text_size_caption_small" />
+                    android:textColor="@color/text_muted_dark"
+                    android:textSize="@dimen/text_size_caption_small"
+                    tools:text="来自：Windows 桌面中枢端" />
             </LinearLayout>
 
             <TextView
                 android:id="@+id/tvTaskStatusBadge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="@color/surface_variant_dark"
+                android:background="@drawable/bg_badge_rounded"
+                android:backgroundTint="@color/surface_variant_dark"
+                android:fontFamily="monospace"
                 android:paddingHorizontal="8dp"
                 android:paddingVertical="3dp"
-                android:text="传输中"
-                android:textColor="@color/secondary"
+                android:textColor="@color/transferring_status"
                 android:textSize="11sp"
-                android:textStyle="bold" />
+                android:textStyle="normal"
+                tools:text="传输中" />
         </LinearLayout>
 
         <com.google.android.material.progressindicator.LinearProgressIndicator
@@ -79,10 +87,10 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/spacing_medium"
             android:progress="0"
-            app:indicatorColor="@color/primary"
+            app:indicatorColor="@color/transferring_status"
             app:trackColor="@color/surface_variant_dark"
             app:trackCornerRadius="@dimen/progress_bar_corner_radius"
-            app:trackThickness="@dimen/progress_bar_height" />
+            app:trackThickness="3dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -95,9 +103,10 @@
                 android:id="@+id/tvTaskProgressPercent"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="0%"
+                android:fontFamily="monospace"
                 android:textColor="@color/text_secondary_dark"
-                android:textSize="12sp" />
+                android:textSize="12sp"
+                tools:text="0%" />
 
             <View
                 android:layout_width="0dp"
@@ -108,10 +117,11 @@
                 android:id="@+id/tvTaskSpeed"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="0.0 MB/s"
-                android:textColor="@color/secondary"
+                android:fontFamily="monospace"
+                android:textColor="@color/text_secondary_dark"
                 android:textSize="12sp"
-                android:textStyle="bold" />
+                android:textStyle="normal"
+                tools:text="0.0 MB/s" />
         </LinearLayout>
 
     </LinearLayout>

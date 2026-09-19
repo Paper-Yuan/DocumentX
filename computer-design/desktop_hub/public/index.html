@@ -3,33 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#0078D4">
-  <title>SafeDrop Hub - 跨平台局域网快传系统</title>
+  <meta name="theme-color" content="#101215">
+  <title>SafeDrop - 局域网文件传输</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body class="dark-theme">
-  <!-- App Header (Desktop & Mobile responsive) -->
+  <!-- App header -->
   <header class="app-header">
     <div class="header-left">
       <div class="logo-badge">
-        <span class="logo-dot"></span>
-        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <span class="logo-dot" title="服务运行中"></span>
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
         </svg>
       </div>
       <div class="app-title-group">
         <h1 class="app-title">SafeDrop</h1>
-        <span class="app-tag" id="currentRoleBadge">桌面中枢端</span>
+        <span class="app-tag" id="currentRoleBadge">桌面中枢</span>
       </div>
     </div>
 
     <div class="header-right">
-      <!-- Dynamic Pairing QR Code button -->
-      <button class="icon-btn" id="openQrModalBtn" title="AP 隔离穿透配对码">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button class="icon-btn" id="openQrModalBtn" title="显示我的配对码" aria-label="显示我的配对码">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <rect x="3" y="3" width="7" height="7"></rect>
           <rect x="14" y="3" width="7" height="7"></rect>
           <rect x="14" y="14" width="7" height="7"></rect>
@@ -38,54 +34,52 @@
         </svg>
       </button>
 
-      <!-- 3-State theme toggle (Dark / Eyecare / Light) -->
-      <div class="theme-segmented" id="themeSegmented">
+      <div class="theme-segmented" id="themeSegmented" role="group" aria-label="显示模式">
         <div class="theme-seg-glider" id="themeSegGlider"></div>
-        <button class="theme-seg-btn active" data-theme="dark-theme" title="极客暗黑模式">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-          <span>暗黑</span>
+        <button class="theme-seg-btn active" data-theme="dark-theme" title="深色">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <span>深色</span>
         </button>
-        <button class="theme-seg-btn" data-theme="eyecare-theme" title="温和淡色护眼模式">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        <button class="theme-seg-btn" data-theme="eyecare-theme" title="暖纸护眼">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
           <span>护眼</span>
         </button>
-        <button class="theme-seg-btn" data-theme="light-theme" title="明亮浅色模式">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-          <span>纯白</span>
+        <button class="theme-seg-btn" data-theme="light-theme" title="浅色">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          <span>浅色</span>
         </button>
       </div>
 
       <button class="icon-btn mobile-only-btn" id="themeToggleBtn" title="切换显示模式" style="display:none;">
-        <svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-        <svg class="theme-icon-eyecare" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-        <svg class="theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line></svg>
+        <svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="theme-icon-eyecare" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        <svg class="theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line></svg>
       </button>
     </div>
   </header>
 
-  <!-- Main structure container -->
   <div class="app-layout">
-    <!-- Desktop sidebar navigation (hidden on mobile, replaced by bottom bar) -->
+    <!-- Sidebar -->
     <aside class="desktop-sidebar">
       <nav class="nav-menu">
         <button class="nav-item active" data-tab="radarTab">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m5.66 2.83a2 2 0 0 1 0 2.83"></path>
           </svg>
-          <span>设备发现中心</span>
+          <span>设备发现</span>
         </button>
 
         <button class="nav-item" data-tab="chatTab">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           </svg>
-          <span>互传会话窗口</span>
+          <span>会话</span>
           <span class="badge" id="chatUnreadBadge" style="display:none;">0</span>
         </button>
 
         <button class="nav-item" data-tab="transfersTab">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <polyline points="17 1 21 5 17 9"></polyline>
             <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
             <polyline points="7 23 3 19 7 15"></polyline>
@@ -96,74 +90,101 @@
         </button>
 
         <button class="nav-item" data-tab="filesTab">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
-          <span>安全保险箱 (已接收)</span>
+          <span>已接收文件</span>
         </button>
 
         <button class="nav-item" data-tab="settingsTab">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
           </svg>
-          <span>系统设置</span>
+          <span>设置</span>
         </button>
       </nav>
 
       <div class="sidebar-footer">
         <div class="network-chip">
           <span class="status-pulse"></span>
-          <span class="chip-ip" id="sidebarIpText">192.168.10.42:8899</span>
+          <span class="chip-ip" id="sidebarIpText">—</span>
         </div>
       </div>
     </aside>
 
-    <!-- Main viewport content area -->
     <main class="main-content">
-      <!-- 1. Radar and transfer home tab -->
+      <!-- 设备发现 -->
       <section class="tab-pane active" id="radarTab">
-        <!-- Modern Device Discovery Topology Hub (Replaces broken radar canvas) -->
         <div class="discovery-hub-card">
-          <div class="beacon-stage">
-            <div class="pulse-ring ring-1"></div>
-            <div class="pulse-ring ring-2"></div>
-            <div class="pulse-ring ring-3"></div>
-            <div class="center-hub-node">
-              <div class="hub-avatar">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                  <line x1="8" y1="21" x2="16" y2="21"></line>
-                  <line x1="12" y1="17" x2="12" y2="21"></line>
-                </svg>
+          <div class="radar-instrument">
+            <div class="radar-dial" aria-hidden="true">
+              <span class="radar-ring r1"></span>
+              <span class="radar-ring r2"></span>
+              <span class="radar-ring r3"></span>
+              <span class="radar-cross-h"></span>
+              <span class="radar-cross-v"></span>
+              <span class="radar-sweep"></span>
+            </div>
+            <div class="radar-blips" id="radarBlips" aria-hidden="true"></div>
+            <div class="beacon-stage">
+              <div class="center-hub-node">
+                <div class="hub-avatar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                  </svg>
+                </div>
               </div>
-              <span class="hub-title" id="radarCenterLabel">Windows 桌面中枢</span>
-              <span class="hub-ip-badge" id="hubLocalIpBadge">局域网监听中</span>
+            </div>
+            <div class="radar-identity">
+              <span class="hub-title" id="radarCenterLabel">这台电脑</span>
+              <span class="hub-ip-badge" id="hubLocalIpBadge">—</span>
             </div>
           </div>
-          <div class="radar-status-bar">
-            <span class="radar-scanning-text">
-              <span class="scan-anim-dot"></span>
-              <span id="discoveryStatusText">正在全向监听局域网设备 (UDP 8890 探针与握手通道)...</span>
-            </span>
-            <span class="device-count-tag" id="onlineDeviceCountTag">0 台在线</span>
+
+          <div class="radar-readout">
+            <div class="radar-readout-heading">
+              <span class="eyebrow">局域网传输</span>
+              <span class="device-count-tag" id="onlineDeviceCountTag">0 台在线</span>
+            </div>
+            <div class="radar-status-bar">
+              <span class="radar-scanning-text">
+                <span class="scan-anim-dot"></span>
+                <span id="discoveryStatusText">正在查找同一网络里的设备…</span>
+              </span>
+            </div>
+            <p class="drop-desc" id="radarHintText">另一台设备连上同一个 Wi-Fi、并打开 SafeDrop 后，会自己出现在下面。</p>
+
+            <details class="tech-details">
+              <summary>技术细节</summary>
+              <div class="tech-details-body">
+                <dl>
+                  <dt>发现通道</dt><dd>UDP 8890 广播探针 + 单播握手</dd>
+                  <dt>密钥协商</dt><dd>X25519（不支持时回退 P-256）</dd>
+                  <dt>载荷加密</dt><dd>AES-256-GCM，逐块封装后验签落盘</dd>
+                  <dt>分块大小</dt><dd>4 MiB 流式分块</dd>
+                  <dt>轮询间隔</dt><dd>设备 4 秒 / 文件 6 秒</dd>
+                </dl>
+              </div>
+            </details>
           </div>
         </div>
 
-        <!-- Drag-and-drop & mobile tap file selection card -->
         <div class="drop-zone-card" id="dropZoneCard">
           <input type="file" id="filePickerInput" multiple style="display: none;">
           <div class="drop-zone-content">
             <div class="drop-icon-wrap">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                 <polyline points="17 8 12 3 7 8"></polyline>
                 <line x1="12" y1="3" x2="12" y2="15"></line>
               </svg>
             </div>
             <div class="drop-text-group">
-              <p class="drop-title">轻触选择文件 / 或拖拽投放到此处</p>
-              <p class="drop-desc">支持图片、大视频、文档或批量打包；采用 4MB 分块流式传输</p>
+              <p class="drop-title">把文件拖到这里</p>
+              <p class="drop-desc">图片、视频、文档都可以，一次可以选多个。没选设备时，文件会直接存到本机的接收目录。</p>
             </div>
             <button class="btn btn-primary drop-action-btn" id="chooseFileBtn">
               <span>选择文件</span>
@@ -171,65 +192,38 @@
           </div>
         </div>
 
-        <!-- LAN online devices list -->
         <div class="section-header">
-          <h2 class="section-title">局域网在线设备</h2>
-          <button class="btn btn-ghost btn-sm" id="refreshDevicesBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-icon">
-              <path d="M23 4v6h-6"></path>
-              <path d="M1 20v-6h6"></path>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-            <span>刷新</span>
-          </button>
+          <h2 class="section-title">同一网络中的设备</h2>
+          <span class="poll-stamp" id="deviceListUpdatedAgo">—</span>
         </div>
 
-        <div class="devices-grid" id="devicesGrid">
-          <!-- Dynamic device cards injected here -->
-        </div>
+        <div class="devices-grid" id="devicesGrid"></div>
       </section>
 
-      <!-- 2. Per-device transfer & conversation window tab -->
+      <!-- 会话 -->
       <section class="tab-pane" id="chatTab">
         <div class="chat-layout">
-          <!-- Left: Connected peers list -->
           <div class="chat-sidebar">
             <div class="chat-sidebar-header">
-              <span class="chat-sidebar-title">已连接对端设备</span>
+              <span class="chat-sidebar-title">已连接设备</span>
               <span class="badge" id="chatPeerCountBadge">0</span>
             </div>
-            <div class="chat-peers-list" id="chatPeersList">
-              <div class="chat-peer-empty" id="chatNoPeersHint">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m5.66 2.83a2 2 0 0 1 0 2.83"></path>
-                </svg>
-                <p>暂无互联设备</p>
-                <span>请在“设备发现”页点击“进入会话”或等待手机上线</span>
-              </div>
-            </div>
+            <div class="chat-peers-list" id="chatPeersList"></div>
           </div>
 
-          <!-- Right: Active conversation & file transfer pane -->
           <div class="chat-main-pane" id="chatMainPane">
-            <!-- State 1: No peer selected -->
             <div class="chat-unselected-state" id="chatUnselectedState">
               <div class="empty-state">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                </svg>
-                <h3>请选择对端设备开启会话</h3>
-                <p>点击左侧设备列表或在发现中心点击“进入会话”，即可进行独立双向文件流式快传与消息记录</p>
+                <p>还没有选中的设备</p>
+                <span>在左边点一台设备，就能互发文件和消息。</span>
               </div>
             </div>
 
-            <!-- State 2: Active peer conversation window -->
             <div class="chat-active-state" id="chatActiveState" style="display:none;">
-              <!-- Peer header bar -->
               <div class="chat-header-bar">
                 <div class="chat-header-peer">
                   <div class="chat-header-avatar" id="chatActiveAvatar">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                       <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
                       <line x1="12" y1="18" x2="12.01" y2="18"></line>
                     </svg>
@@ -237,51 +231,43 @@
                   <div class="chat-header-info">
                     <div class="chat-header-name-row">
                       <span class="chat-header-name" id="chatActiveName">目标设备</span>
-                      <span class="device-platform-tag mobile" id="chatActiveTag">手机端</span>
-                      <span class="security-tag">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                        X25519 配对标识
+                      <span class="device-platform-tag" id="chatActiveTag">手机端</span>
+                      <span class="security-tag" id="chatSecurityTag">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                        <span id="chatSecurityTagText">未配对</span>
                       </span>
                     </div>
-                    <div class="chat-header-meta" id="chatActiveMeta">IP: 192.168.10.45:8899</div>
+                    <div class="chat-header-meta" id="chatActiveMeta">—</div>
                   </div>
                 </div>
                 <div class="chat-header-actions">
-                  <button class="btn btn-ghost btn-sm" id="chatClearHistoryBtn" title="清空此会话记录">清空历史</button>
+                  <button class="btn btn-ghost btn-sm" id="chatClearHistoryBtn">清空记录</button>
                   <button class="btn btn-primary btn-sm" id="chatQuickSendBtn">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:4px;">
-                      <line x1="22" y1="2" x2="11" y2="13"></line>
-                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                    </svg>
-                    <span>投送文件</span>
+                    <span>发送文件</span>
                   </button>
                 </div>
               </div>
 
-              <!-- Message & transfer timeline (with drop zone) -->
               <div class="chat-stream-container" id="chatStreamContainer">
                 <div class="chat-drop-overlay" id="chatDropOverlay">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                   </svg>
-                  <span>松开鼠标立即向此设备投送文件</span>
+                  <span>松手就发给这台设备</span>
                 </div>
-                <div class="chat-timeline" id="chatTimeline">
-                  <!-- Injected message & file cards -->
-                </div>
+                <div class="chat-timeline" id="chatTimeline"></div>
               </div>
 
-              <!-- Bottom input & action bar -->
               <div class="chat-input-bar">
                 <input type="file" id="chatFileInput" multiple style="display: none;">
-                <button class="icon-btn" id="chatAttachBtn" title="选择文件投送">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button class="icon-btn" id="chatAttachBtn" title="发送文件" aria-label="发送文件">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
                   </svg>
                 </button>
-                <input type="text" class="chat-text-input" id="chatTextInput" placeholder="输入即时文本 / 剪贴板内容，按回车快速发送...">
+                <input type="text" class="chat-text-input" id="chatTextInput" placeholder="输入消息，回车发送">
                 <button class="btn btn-primary chat-send-btn" id="chatSendTextBtn">
                   <span>发送</span>
                 </button>
@@ -291,165 +277,143 @@
         </div>
       </section>
 
-      <!-- 3. Transfer task queue tab -->
+      <!-- 传输任务 -->
       <section class="tab-pane" id="transfersTab">
         <div class="section-header">
-          <h2 class="section-title">实时传输任务</h2>
-          <button class="btn btn-ghost btn-sm" id="clearCompletedTasksBtn">清除已完成</button>
-        </div>
-        <div class="transfers-list" id="transfersList">
-          <div class="empty-state" id="noTransfersEmpty">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <polyline points="17 1 21 5 17 9"></polyline>
-              <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
-              <polyline points="7 23 3 19 7 15"></polyline>
-              <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
-            </svg>
-            <p>暂无进行中的传输任务</p>
-            <span>请在雷达页选择文件并发起投送</span>
+          <h2 class="section-title">传输任务</h2>
+          <div class="section-actions">
+            <button class="btn btn-ghost btn-sm" id="clearCompletedTasksBtn">清除已结束</button>
           </div>
+        </div>
+        <div class="transfers-list" id="transfersList"></div>
+        <div class="empty-state" id="noTransfersEmpty">
+          <p>当前没有传输任务</p>
+          <span>在设备发现页选文件即可开始。失败的任务会留在这里，可以直接重试。</span>
+          <button class="btn btn-secondary btn-sm" id="noTransfersPickBtn">选择文件</button>
         </div>
       </section>
 
-      <!-- 3. Vault tab (received files) -->
+      <!-- 已接收文件 -->
       <section class="tab-pane" id="filesTab">
         <div class="section-header">
-          <h2 class="section-title">安全保险箱 (已接收文件)</h2>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-secondary btn-sm" id="openDirFromFilesBtn" title="在系统资源管理器中打开当前保存目录">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:4px;">
+          <h2 class="section-title">已接收文件</h2>
+          <div class="section-actions">
+            <button class="btn btn-secondary btn-sm" id="openDirFromFilesBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
               </svg>
-              <span>打开文件夹</span>
+              <span>打开所在文件夹</span>
             </button>
-            <button class="btn btn-ghost btn-sm" id="refreshFilesBtn">刷新文件</button>
           </div>
         </div>
-        <p class="section-desc" id="sandboxDirText">落盘沙箱路径: C:\Users\...\Downloads\SafeDrop</p>
-        <div class="files-list" id="filesList">
-          <!-- Received files list -->
-        </div>
+        <p class="section-desc" id="sandboxDirText">—</p>
+        <div class="files-list" id="filesList"></div>
       </section>
 
-      <!-- 4. Settings tab -->
+      <!-- 设置 -->
       <section class="tab-pane" id="settingsTab">
         <div class="section-header">
-          <h2 class="section-title">系统与安全配置</h2>
+          <h2 class="section-title">设置</h2>
         </div>
 
         <div class="settings-card">
+          <h3 class="settings-section-title">传输</h3>
+
           <div class="setting-row">
             <div class="setting-info">
-              <span class="setting-title">自动接收受信任设备</span>
-              <span class="setting-desc">免手动确认直接接收白名单设备的推流请求</span>
+              <span class="setting-title">压缩文本类文件</span>
+              <span class="setting-desc">传输 .txt、.log、.json、代码等可压缩文件前先打包，省时间。图片视频不会压缩。</span>
             </div>
             <label class="switch">
-              <input type="checkbox" id="autoAcceptToggle" checked>
+              <input type="checkbox" id="compressionToggle" checked aria-label="压缩文本类文件">
               <span class="slider round"></span>
             </label>
           </div>
 
           <div class="setting-row">
             <div class="setting-info">
-              <span class="setting-title">传输载荷加密（已启用）</span>
-              <span class="setting-desc">每个分块以 X25519 协商密钥 + AES-256-GCM 加密封装，服务端验签通过才落盘</span>
+              <span class="setting-title">同时传输 3 个文件</span>
+              <span class="setting-desc">多出来的任务排队，按顺序开始。</span>
             </div>
-            <label class="switch">
-              <input type="checkbox" id="cryptoEnforceToggle" checked disabled>
-              <span class="slider round"></span>
-            </label>
+            <span class="settings-badge success">已开启</span>
           </div>
 
           <div class="setting-row">
             <div class="setting-info">
-              <span class="setting-title">本机 X25519 公钥指纹</span>
-              <span class="setting-desc code-font" id="settingsFingerprintText">A3F8B9C102D4E5F6</span>
+              <span class="setting-title">传输内容加密</span>
+              <span class="setting-desc">每个分块单独加密封装，对方验证通过后才写入磁盘。无法关闭。</span>
             </div>
+            <span class="settings-badge success">始终开启</span>
           </div>
+        </div>
 
-          <div class="setting-row">
-            <div class="setting-info">
-              <span class="setting-title">当前配对动态 PIN 码</span>
-              <span class="setting-desc" id="settingsPinText">886622</span>
-            </div>
-            <button class="btn btn-secondary btn-sm" id="refreshPinBtn">刷新 PIN</button>
-          </div>
-
-          <!-- NEW: Device Names Management Section -->
-          <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 12px;">
+        <div class="settings-card">
+          <h3 class="settings-section-title">保存位置</h3>
+          <div class="setting-row is-stacked">
             <div class="setting-info" style="width: 100%;">
-              <span class="setting-title">🏷️ 已连接设备管理</span>
-              <span class="setting-desc">为设备设置自定义名称（基于 X25519 指纹，跨网络保持一致）</span>
-            </div>
-            <div id="deviceNamesManager" style="width: 100%; display: flex; flex-direction: column; gap: 10px;">
-              <!-- Dynamically populated device name cards -->
-              <div class="device-name-empty" style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 14px;">
-                暂无已连接设备
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 10px;">
-            <div class="setting-info" style="width: 100%;">
-              <span class="setting-title">文件储存与沙箱目录管理</span>
-              <span class="setting-desc" id="settingsDirDisplay">C:\Users\...\Downloads\SafeDrop</span>
+              <span class="setting-title">收到的文件放在哪里</span>
+              <span class="setting-desc code-font" id="settingsDirDisplay">—</span>
             </div>
             <div class="dir-config-group">
-              <div class="dir-input-row">
-                <input type="text" id="customDownloadDirInput" class="dir-text-input" placeholder="输入自定义保存目录完整路径，如 D:\SafeDrop">
-                <button class="btn btn-primary btn-sm" id="saveDownloadDirBtn">保存更改</button>
-                <button class="btn btn-secondary btn-sm" id="openDirBtn" title="在系统资源管理器中打开">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:4px;">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                  </svg>
-                  <span>打开目录</span>
-                </button>
-              </div>
               <div class="dir-presets-row">
-                <span class="dir-preset-label">快捷预设:</span>
-                <button class="preset-chip" data-path="downloads">Downloads/SafeDrop</button>
-                <button class="preset-chip" data-path="documents">Documents/SafeDrop</button>
-                <button class="preset-chip" data-path="desktop">Desktop/SafeDrop</button>
+                <span class="dir-preset-label">常用位置</span>
+                <button class="preset-chip" data-path="downloads">下载</button>
+                <button class="preset-chip" data-path="documents">文档</button>
+                <button class="preset-chip" data-path="desktop">桌面</button>
+              </div>
+              <div class="dir-input-row">
+                <input type="text" id="customDownloadDirInput" class="dir-text-input" placeholder="自定义完整路径，例如 D:\SafeDrop" aria-label="保存目录完整路径">
+                <button class="btn btn-primary btn-sm" id="saveDownloadDirBtn">应用</button>
+                <button class="btn btn-secondary btn-sm" id="openDirBtn">打开</button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Transfer settings: uses the same card and row classes as the block above, so it
-             inherits consistent spacing and alignment instead of rendering as bare text. -->
         <div class="settings-card">
-          <h3 class="settings-section-title">传输与安全配置</h3>
+          <h3 class="settings-section-title">配对与身份</h3>
+
           <div class="setting-row">
             <div class="setting-info">
-              <span class="setting-title">智能压缩传输</span>
-              <span class="setting-desc">自动压缩文本文件（.txt、.log、.json、.js、.css 等），节省带宽并提升传输速度</span>
+              <span class="setting-title">配对码</span>
+              <span class="setting-desc">另一台设备要连你时，输入这 6 位数字。</span>
             </div>
-            <label class="switch">
-              <input type="checkbox" id="compressionToggle" checked>
-              <span class="slider round"></span>
-            </label>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span class="pin-code" id="settingsPinText">------</span>
+              <button class="btn btn-secondary btn-sm" id="refreshPinBtn">换一组</button>
+            </div>
           </div>
+
           <div class="setting-row">
             <div class="setting-info">
-              <span class="setting-title">并发传输队列</span>
-              <span class="setting-desc">最大同时传输 3 个文件，充分利用局域网带宽</span>
+              <span class="setting-title">本机设备指纹</span>
+              <span class="setting-desc">对方确认身份时核对这串字符。</span>
             </div>
-            <span class="settings-badge success">已启用</span>
+            <span class="setting-desc code-font" id="settingsFingerprintText">—</span>
+          </div>
+
+          <div class="setting-row is-stacked">
+            <div class="setting-info" style="width: 100%;">
+              <span class="setting-title">已连接设备名称</span>
+              <span class="setting-desc">给设备起个名字，换网络也认得。</span>
+            </div>
+            <div id="deviceNamesManager" style="width: 100%; display: flex; flex-direction: column; gap: 8px;"></div>
           </div>
         </div>
 
         <div class="about-card">
-          <h3>SafeDrop 跨平台局域网快传系统</h3>
-          <p>Windows 桌面中枢端 • 零依赖 Node 后端 + Tauri 外壳 • 零配置 UDP 发现协议</p>
+          <h3>SafeDrop</h3>
+          <p>只在局域网内工作，不经过任何服务器。桌面端与手机端使用同一套端到端协议：
+            <span class="data">safedrop-e2e-v2</span>。</p>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Mobile bottom navigation bar (active only on mobile viewports) -->
+  <!-- Mobile bottom navigation -->
   <nav class="mobile-bottom-nav">
     <button class="bottom-nav-item active" data-tab="radarTab">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <circle cx="12" cy="12" r="10"></circle>
         <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m5.66 2.83a2 2 0 0 1 0 2.83"></path>
       </svg>
@@ -457,7 +421,7 @@
     </button>
 
     <button class="bottom-nav-item" data-tab="transfersTab">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <polyline points="17 1 21 5 17 9"></polyline>
         <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
         <polyline points="7 23 3 19 7 15"></polyline>
@@ -468,14 +432,14 @@
     </button>
 
     <button class="bottom-nav-item" data-tab="filesTab">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
       </svg>
       <span>文件</span>
     </button>
 
     <button class="bottom-nav-item" data-tab="settingsTab">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <circle cx="12" cy="12" r="3"></circle>
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
       </svg>
@@ -483,42 +447,36 @@
     </button>
   </nav>
 
-  <!-- Pairing modal (Dynamic QR Code and 6-digit PIN) -->
-  <div class="modal-overlay" id="qrModalOverlay">
+  <!-- 我的配对码 / 二维码 -->
+  <div class="modal-overlay" id="qrModalOverlay" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">AP 隔离穿透配对</h3>
-        <button class="icon-btn modal-close-btn" id="closeQrModalBtn">&times;</button>
+        <h3 class="modal-title" id="qrModalTitle">我的配对码</h3>
+        <button class="icon-btn modal-close-btn" id="closeQrModalBtn" aria-label="关闭">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="modal-desc">当路由器开启 AP 隔离阻断局域网 UDP 广播时，使用手机相机或浏览器扫码，直接建立单播极速通道：</p>
-        
-        <div class="qr-mode-tabs">
-          <button class="qr-mode-tab active" id="qrModeAppBtn" data-mode="app">SafeDrop App 专享扫码</button>
-          <button class="qr-mode-tab" id="qrModeWebBtn" data-mode="web">通用浏览器网页扫码</button>
+        <p class="modal-desc">让另一台设备扫这个码，或者把它显示的配对码和这里的对上就行。路由器开了 AP 隔离、设备互相找不到时，这个码也能直接建立连接。</p>
+
+        <div class="qr-mode-tabs" role="group" aria-label="二维码类型">
+          <button class="qr-mode-tab active" id="qrModeAppBtn" data-mode="app">SafeDrop 应用扫码</button>
+          <button class="qr-mode-tab" id="qrModeWebBtn" data-mode="web">浏览器直连</button>
         </div>
 
         <div class="qr-code-wrapper">
-          <canvas id="qrCanvas" width="220" height="220"></canvas>
+          <canvas id="qrCanvas" width="220" height="220" role="img" aria-label="配对二维码"></canvas>
         </div>
 
         <div class="pin-box">
-          <span class="pin-label">动态验证 PIN 码</span>
+          <span class="pin-label">配对码</span>
           <div class="pin-code-group">
             <span class="pin-code" id="modalPinCode">------</span>
-            <button class="btn btn-ghost btn-sm" id="modalRefreshPinBtn" title="刷新动态 PIN 码与配对凭据">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:2px;">
-                <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
-              <span>换一组</span>
-            </button>
+            <button class="btn btn-ghost btn-sm" id="modalRefreshPinBtn">换一组</button>
           </div>
         </div>
 
         <div class="connection-url-box">
-          <span class="url-label">直连网址：</span>
-          <code class="url-text" id="modalDirectUrl">http://192.168.10.42:8899/</code>
+          <span class="url-label">直连地址</span>
+          <code class="url-text" id="modalDirectUrl">—</code>
           <button class="btn btn-ghost btn-sm" id="copyUrlBtn">复制</button>
         </div>
       </div>
@@ -528,11 +486,80 @@
     </div>
   </div>
 
-  <!-- Global Toast notification -->
-  <div class="toast-container" id="toastContainer"></div>
+  <!-- 配对面板：取代 window.prompt -->
+  <div class="sheet-overlay" id="pairSheetOverlay" role="dialog" aria-modal="true" aria-labelledby="pairSheetTitle">
+    <div class="pair-sheet">
+      <div class="pair-sheet-header">
+        <div class="pair-sheet-peer">
+          <span class="eyebrow">配对</span>
+          <h2 id="pairSheetTitle">设备</h2>
+          <div class="peer-addr" id="pairSheetAddr">—</div>
+        </div>
+        <button class="icon-btn" id="pairSheetClose" aria-label="关闭">&times;</button>
+      </div>
 
-  <!-- Scripts -->
+      <div class="pair-sheet-body">
+        <p class="modal-desc" style="margin-bottom:0;">在这台设备的屏幕上输入对方显示的 6 位配对码。输完第 6 位会自动开始连接。</p>
+
+        <div>
+          <div class="pair-field-label">
+            <span>配对码</span>
+            <span class="pair-field-hint">6 位数字</span>
+          </div>
+          <div class="pin-cells" id="pairPinCells" style="margin-top:6px;">
+            <input type="tel" inputmode="numeric" maxlength="1" class="pin-cell" data-index="0" aria-label="配对码第 1 位">
+            <input type="tel" inputmode="numeric" maxlength="1" class="pin-cell" data-index="1" aria-label="配对码第 2 位">
+            <input type="tel" inputmode="numeric" maxlength="1" class="pin-cell" data-index="2" aria-label="配对码第 3 位">
+            <input type="tel" inputmode="numeric" maxlength="1" class="pin-cell" data-index="3" aria-label="配对码第 4 位">
+            <input type="tel" inputmode="numeric" maxlength="1" class="pin-cell" data-index="4" aria-label="配对码第 5 位">
+            <input type="tel" inputmode="numeric" maxlength="1" class="pin-cell" data-index="5" aria-label="配对码第 6 位">
+          </div>
+          <p class="field-error" id="pairError" role="alert"></p>
+        </div>
+
+        <details class="tech-details" id="pairUriDetails">
+          <summary>粘贴配对链接</summary>
+          <div class="tech-details-body" style="padding-top:8px;">
+            <p class="pair-privacy" style="margin-bottom:8px;">对方应用「扫码配对」时给出的 <span class="data">safedrop://</span> 链接，粘进来会自动填好地址和配对码。</p>
+            <div class="pair-uri-row">
+              <input type="text" id="pairUriInput" placeholder="safedrop://pair?ip=…&port=…&pin=…" aria-label="配对链接">
+              <button class="btn btn-secondary btn-sm" id="pairUriApplyBtn">解析</button>
+            </div>
+            <p class="field-error" id="pairUriError" role="alert"></p>
+            <div class="pair-uri-row" style="margin-top:8px;">
+              <input type="text" id="pairHostInput" placeholder="192.168.10.42" aria-label="对方地址" autocomplete="off">
+              <input type="text" id="pairPortInput" class="pair-port-input" placeholder="8899" aria-label="对方端口" autocomplete="off">
+            </div>
+          </div>
+        </details>
+
+        <details class="tech-details">
+          <summary>技术细节</summary>
+          <div class="tech-details-body">
+            <dl>
+              <dt>握手</dt><dd id="pairTechPeer">—</dd>
+              <dt>算法</dt><dd>X25519 协商 + AES-256-GCM 分块封装</dd>
+              <dt>协议</dt><dd id="pairTechProto">safedrop-e2e-v2</dd>
+            </dl>
+          </div>
+        </details>
+      </div>
+
+      <div class="pair-foot">
+        <p class="pair-privacy">配对码只在这次连接里使用：不写入磁盘、不保存、页面关掉就没了。这样即使这台电脑被别人拿到，也还原不出你们的会话。</p>
+        <div class="pair-actions">
+          <button class="btn btn-ghost btn-sm" id="pairRetryFetch">对方换了一组？重新获取</button>
+          <button class="btn btn-secondary" id="pairCancelBtn">取消</button>
+          <button class="btn btn-primary" id="pairConnectBtn">连接</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
   <script src="qrcode.js"></script>
   <script src="app.js"></script>
+  <script src="global-shortcuts.js"></script>
 </body>
 </html>

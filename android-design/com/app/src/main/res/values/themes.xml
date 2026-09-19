@@ -1,38 +1,131 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Base application theme with Material 3 Dark Style -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      Shape + type defaults shared by every mode. Radii top out at 12dp, and cards are drawn
+      with a hairline rather than an elevation shadow: real elevation is reserved for dialogs
+      and menus, which are the only things that float above the panel.
+    -->
+    <style name="ShapeAppearance.SafeDrop.Small" parent="ShapeAppearance.Material3.SmallComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/radius_small</item>
+    </style>
+
+    <style name="ShapeAppearance.SafeDrop.Medium" parent="ShapeAppearance.Material3.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/radius_medium</item>
+    </style>
+
+    <style name="ShapeAppearance.SafeDrop.Large" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/radius_large</item>
+    </style>
+
+    <!-- Instrument labels: small, tracked, muted -->
+    <style name="TextAppearance.SafeDrop.Eyebrow" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:textSize">@dimen/text_size_eyebrow</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textStyle">normal</item>
+    </style>
+
+    <!-- Machine values (IP:port, sizes, speeds, chunk counts, pairing digits) in tabular mono,
+         so a column of them stays aligned as the numbers change under the finger. -->
+    <style name="TextAppearance.SafeDrop.Mono" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textFontWeight" tools:targetApi="21">400</item>
+        <item name="android:letterSpacing">0.02</item>
+    </style>
+
+    <style name="Widget.SafeDrop.Card" parent="Widget.Material3.CardView.Outlined">
+        <item name="cardCornerRadius">@dimen/radius_large</item>
+        <item name="cardElevation">@dimen/card_elevation</item>
+        <item name="strokeWidth">@dimen/hairline_width</item>
+    </style>
+
+    <!-- Base application theme: dark instrument panel -->
     <style name="Theme.SafeDrop" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorOnPrimary">@color/on_primary</item>
-        <item name="colorSecondary">@color/secondary</item>
-        <item name="colorOnSecondary">@color/on_secondary</item>
+        <item name="colorPrimary">@color/ink</item>
+        <item name="colorOnPrimary">@color/ink_inverse</item>
+        <item name="colorPrimaryContainer">@color/surface_elevated_dark</item>
+        <item name="colorOnPrimaryContainer">@color/ink</item>
+        <item name="colorSecondary">@color/ink_muted</item>
+        <item name="colorOnSecondary">@color/ink_inverse</item>
+        <item name="colorSecondaryContainer">@color/surface_variant_dark</item>
+        <item name="colorOnSecondaryContainer">@color/ink</item>
+        <item name="colorSurface">@color/surface_dark</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="colorSurfaceVariant">@color/surface_variant_dark</item>
+        <item name="colorOnSurfaceVariant">@color/ink_muted</item>
+        <item name="android:colorBackground">@color/background_dark</item>
+        <item name="colorOnBackground">@color/ink</item>
+        <item name="colorOutline">@color/border_dark</item>
+        <item name="colorOutlineVariant">@color/border_dark</item>
+        <item name="colorError">@color/state_failure_text</item>
         <item name="android:windowBackground">@color/background_dark</item>
         <item name="android:statusBarColor">@color/background_dark</item>
         <item name="android:navigationBarColor">@color/surface_dark</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.SafeDrop.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.SafeDrop.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.SafeDrop.Large</item>
+        <item name="materialCardViewStyle">@style/Widget.SafeDrop.Card</item>
+        <item name="android:textColorLink">@color/ink</item>
     </style>
 
-    <!-- Eye-Care Theme Style -->
+    <!-- Eye-care: warm paper, ink unchanged from the other modes -->
     <style name="Theme.SafeDrop.EyeCare" parent="Theme.Material3.Light.NoActionBar">
-        <item name="colorPrimary">@color/eyecare_primary</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorSecondary">@color/eyecare_accent</item>
-        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="colorPrimary">@color/ink_on_paper</item>
+        <item name="colorOnPrimary">@color/ink_inverse_on_paper</item>
+        <item name="colorPrimaryContainer">@color/eyecare_surface_variant</item>
+        <item name="colorOnPrimaryContainer">@color/ink_on_paper</item>
+        <item name="colorSecondary">@color/ink_muted_on_paper</item>
+        <item name="colorOnSecondary">@color/ink_inverse_on_paper</item>
+        <item name="colorSurface">@color/eyecare_surface</item>
+        <item name="colorOnSurface">@color/ink_on_paper</item>
+        <item name="colorSurfaceVariant">@color/eyecare_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/ink_muted_on_paper</item>
+        <item name="android:colorBackground">@color/eyecare_background</item>
+        <item name="colorOnBackground">@color/ink_on_paper</item>
+        <item name="colorOutline">@color/eyecare_border</item>
+        <item name="colorOutlineVariant">@color/eyecare_border</item>
+        <item name="colorError">@color/state_failure</item>
         <item name="android:windowBackground">@color/eyecare_background</item>
         <item name="android:statusBarColor">@color/eyecare_background</item>
         <item name="android:navigationBarColor">@color/eyecare_surface</item>
         <item name="android:windowLightStatusBar">true</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.SafeDrop.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.SafeDrop.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.SafeDrop.Large</item>
+        <item name="materialCardViewStyle">@style/Widget.SafeDrop.Card</item>
+        <item name="android:textColorLink">@color/ink_on_paper</item>
     </style>
 
-    <!-- Light Theme Style -->
+    <!-- Light: white sheets on a grey page -->
     <style name="Theme.SafeDrop.Light" parent="Theme.Material3.Light.NoActionBar">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorSecondary">@color/secondary</item>
-        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="colorPrimary">@color/ink_on_paper</item>
+        <item name="colorOnPrimary">@color/ink_inverse_on_paper</item>
+        <item name="colorPrimaryContainer">@color/surface_variant_light</item>
+        <item name="colorOnPrimaryContainer">@color/ink_on_paper</item>
+        <item name="colorSecondary">@color/ink_muted_on_paper</item>
+        <item name="colorOnSecondary">@color/ink_inverse_on_paper</item>
+        <item name="colorSurface">@color/surface_light</item>
+        <item name="colorOnSurface">@color/ink_on_paper</item>
+        <item name="colorSurfaceVariant">@color/surface_variant_light</item>
+        <item name="colorOnSurfaceVariant">@color/ink_muted_on_paper</item>
+        <item name="android:colorBackground">@color/background_light</item>
+        <item name="colorOnBackground">@color/ink_on_paper</item>
+        <item name="colorOutline">@color/border_light</item>
+        <item name="colorOutlineVariant">@color/border_light</item>
+        <item name="colorError">@color/state_failure</item>
         <item name="android:windowBackground">@color/background_light</item>
         <item name="android:statusBarColor">@color/background_light</item>
         <item name="android:navigationBarColor">@color/surface_light</item>
         <item name="android:windowLightStatusBar">true</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.SafeDrop.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.SafeDrop.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.SafeDrop.Large</item>
+        <item name="materialCardViewStyle">@style/Widget.SafeDrop.Card</item>
+        <item name="android:textColorLink">@color/ink_on_paper</item>
     </style>
 
     <!-- Fullscreen Scanner Theme -->
@@ -46,5 +139,13 @@
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsFloating">true</item>
         <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
+
+    <!-- Pairing sheet: the one surface where the digits are the subject, so the dialog itself
+         keeps elevation (it floats above the panel). -->
+    <style name="Theme.SafeDrop.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.SafeDrop.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.SafeDrop.Large</item>
+        <item name="alertDialogStyle">@style/MaterialAlertDialog.Material3</item>
     </style>
 </resources>

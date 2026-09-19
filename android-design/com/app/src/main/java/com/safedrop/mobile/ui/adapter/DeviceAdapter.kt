@@ -1,10 +1,11 @@
 package com.safedrop.mobile.ui.adapter
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.safedrop.mobile.R
 import com.safedrop.mobile.databinding.ItemDeviceBinding
+import com.safedrop.mobile.ui.Palette
 
 data class DiscoveredDevice(
     val id: String,
@@ -51,7 +52,7 @@ class DeviceAdapter(
         return when {
             !customName.isNullOrEmpty() -> customName
             device.name.isNotEmpty() -> device.name
-            else -> "Device (${device.host})"
+            else -> "未命名设备 ${device.host}"
         }
     }
 
@@ -85,45 +86,32 @@ class DeviceAdapter(
                 if (isMobile) com.safedrop.mobile.R.drawable.ic_device_mobile
                 else com.safedrop.mobile.R.drawable.ic_device_pc
             )
-            binding.tvDevicePlatformTag.text = if (isMobile) "手机端" else "电脑端"
+            val ctx = binding.root.context
+            binding.tvDevicePlatformTag.text =
+                ctx.getString(if (isMobile) R.string.device_phone else R.string.device_pc)
 
             binding.tvDeviceName.text = displayName
             binding.tvDeviceAddress.text = "${device.host}:${device.port}"
-            binding.tvFingerprint.text = "指纹: ${device.fingerprint.ifEmpty { "待配对" }}"
+            binding.tvFingerprint.text = ctx.getString(
+                R.string.fingerprint_label,
+                device.fingerprint.ifEmpty { "…" }
+            )
 
-            // Theme adaptation
-            when (theme) {
-                "eyecare" -> {
-                    binding.root.setCardBackgroundColor(Color.parseColor("#F5EDDC"))
-                    binding.root.strokeColor = Color.parseColor("#D5C7AA")
-                    binding.tvDeviceName.setTextColor(Color.parseColor("#000000"))
-                    binding.tvDeviceAddress.setTextColor(Color.parseColor("#3D382B"))
-                    binding.btnConnectDevice.setBackgroundColor(Color.parseColor("#CDE8D5"))
-                    binding.btnConnectDevice.setTextColor(Color.parseColor("#000000"))
-                    binding.btnOpenChat.setTextColor(Color.parseColor("#2E5C38"))
-                    binding.btnOpenChat.iconTint = android.content.res.ColorStateList.valueOf(Color.parseColor("#2E5C38"))
-                }
-                "light" -> {
-                    binding.root.setCardBackgroundColor(Color.parseColor("#FFFFFF"))
-                    binding.root.strokeColor = Color.parseColor("#E2E8F0")
-                    binding.tvDeviceName.setTextColor(Color.parseColor("#000000"))
-                    binding.tvDeviceAddress.setTextColor(Color.parseColor("#64748B"))
-                    binding.btnConnectDevice.setBackgroundColor(Color.parseColor("#E2E8F0"))
-                    binding.btnConnectDevice.setTextColor(Color.parseColor("#000000"))
-                    binding.btnOpenChat.setTextColor(Color.parseColor("#4F46E5"))
-                    binding.btnOpenChat.iconTint = android.content.res.ColorStateList.valueOf(Color.parseColor("#4F46E5"))
-                }
-                else -> {
-                    binding.root.setCardBackgroundColor(Color.parseColor("#111827"))
-                    binding.root.strokeColor = Color.parseColor("#1F2937")
-                    binding.tvDeviceName.setTextColor(Color.parseColor("#F8FAFC"))
-                    binding.tvDeviceAddress.setTextColor(Color.parseColor("#94A3B8"))
-                    binding.btnConnectDevice.setBackgroundColor(Color.parseColor("#4F46E5"))
-                    binding.btnConnectDevice.setTextColor(Color.parseColor("#FFFFFF"))
-                    binding.btnOpenChat.setTextColor(Color.parseColor("#818CF8"))
-                    binding.btnOpenChat.iconTint = android.content.res.ColorStateList.valueOf(Color.parseColor("#818CF8"))
-                }
-            }
+            // Paint comes from res/values/colors.xml through Palette - no hex in this file.
+            val p = Palette.of(ctx, theme)
+            binding.root.setCardBackgroundColor(p.surface)
+            binding.root.strokeColor = p.hairline
+            binding.ivDeviceIcon.backgroundTintList = p.states(p.raised)
+            binding.ivDeviceIcon.imageTintList = p.states(p.ink)
+            binding.tvDeviceName.setTextColor(p.ink)
+            binding.tvDeviceAddress.setTextColor(p.inkMuted)
+            binding.tvFingerprint.setTextColor(p.inkFaint)
+            binding.tvDevicePlatformTag.setTextColor(p.inkMuted)
+            binding.tvDevicePlatformTag.backgroundTintList = p.states(p.raised)
+            binding.btnOpenChat.setTextColor(p.inkMuted)
+            binding.btnOpenChat.iconTint = p.states(p.inkMuted)
+            binding.btnConnectDevice.setBackgroundColor(p.ctaBackground)
+            binding.btnConnectDevice.setTextColor(p.ctaText)
 
             binding.root.setOnClickListener { onClick(device) }
             binding.btnConnectDevice.setOnClickListener { onSend(device) }

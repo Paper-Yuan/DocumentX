@@ -3,79 +3,123 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#4F46E5">
-  <title>SafeDrop 极速快传 - 独立文件收发门户</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#101215">
+  <title>SafeDrop 极速快传 - 局域网收发门户</title>
   <style>
+    /* =========================================================
+       SafeDrop portal - "本地仪表台"
+       Ink-first: neutral surfaces carry structure, colour is reserved for state.
+       No brand gradient, no glow, no frosted panels, no network fonts - this page is
+       served from a phone over a LAN, where a webfont would simply never arrive.
+       Radii 4/8/12. Shadows on floating layers only.
+       ========================================================= */
     :root {
-      --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --font-family: system-ui, "Segoe UI Variable Text", "Segoe UI", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-data: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+      --radius-xs: 4px;
       --radius-sm: 8px;
-      --radius-md: 14px;
-      --radius-lg: 20px;
+      --radius-md: 12px;
+      --radius-lg: 12px;
       --radius-full: 9999px;
-      --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --dur-1: 120ms;
+      --dur-2: 180ms;
+      --transition: background-color var(--dur-1) var(--ease-out),
+                    border-color var(--dur-1) var(--ease-out),
+                    color var(--dur-1) var(--ease-out),
+                    box-shadow var(--dur-1) var(--ease-out);
     }
 
     body.dark-theme {
-      --bg-base: #0B0F19;
-      --bg-surface: rgba(17, 24, 39, 0.85);
-      --bg-card: #151D2F;
-      --bg-card-hover: #1C263E;
+      --bg-base: #101215;
+      --bg-surface: #16191D;
+      --bg-card: #1D2126;
+      --bg-card-hover: #23282E;
       --border-color: rgba(255, 255, 255, 0.08);
-      --border-active: rgba(99, 102, 241, 0.5);
-      --text-primary: #F8FAFC;
-      --text-secondary: #94A3B8;
-      --text-muted: #64748B;
-      --accent: #6366F1;
-      --accent-hover: #4F46E5;
-      --accent-glow: rgba(99, 102, 241, 0.25);
-      --success: #10B981;
-      --success-glow: rgba(16, 185, 129, 0.2);
-      --warning: #F59E0B;
-      --danger: #EF4444;
-      --header-bg: rgba(11, 15, 25, 0.88);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --border-active: rgba(255, 255, 255, 0.24);
+      --text-primary: #E8EBED;
+      --text-secondary: #A6ADB4;
+      --text-muted: #79818A;
+      /* Interactive ink, not hue. On dark the loudest surface is near-white. */
+      --accent: #F2F4F5;
+      --accent-text: #0B0D0F;
+      --accent-hover: #FFFFFF;
+      --focus-ring: #F2F4F5;
+      --success: #57B383;
+      --progress: #6FA9DC;
+      --warning: #D9A441;
+      --danger: #E0776C;
+      --offline: #7C848C;
+      --success-bg: rgba(87, 179, 131, 0.12);
+      --progress-bg: rgba(111, 169, 220, 0.12);
+      --warning-bg: rgba(217, 164, 65, 0.12);
+      --danger-bg: rgba(224, 119, 108, 0.12);
+      --ink-quiet: rgba(242, 244, 245, 0.14);
+      --scrim: rgba(6, 7, 9, 0.62);
+      --shadow-float: 0 8px 24px -12px rgba(0, 0, 0, 0.45);
+      --header-bg: #16191D;
     }
 
+    /* Warm paper identity, same ink + semantic system as the other two themes. */
     body.eyecare-theme {
-      --bg-base: #EDE4D0;
-      --bg-surface: #F5EDDC;
-      --bg-card: #FDF9F0;
-      --bg-card-hover: #FAF4E5;
-      --border-color: #D5C7AA;
-      --border-active: #2E7D56;
-      --text-primary: #000000;
-      --text-secondary: #3D382B;
-      --text-muted: #665E4E;
-      --accent: #2E7D56;
-      --accent-hover: #246445;
-      --accent-glow: rgba(46, 125, 86, 0.2);
-      --success: #1B6B40;
-      --success-glow: rgba(27, 107, 64, 0.2);
-      --warning: #925805;
-      --danger: #9E2A2B;
-      --header-bg: rgba(237, 228, 208, 0.92);
+      --bg-base: #EDE7D8;
+      --bg-surface: #F4EFE2;
+      --bg-card: #FBF7EC;
+      --bg-card-hover: #FFFFFF;
+      --border-color: rgba(20, 22, 25, 0.12);
+      --border-strong: rgba(20, 22, 25, 0.18);
+      --border-active: rgba(20, 22, 25, 0.24);
+      --text-primary: #1F1C17;
+      --text-secondary: #4C463D;
+      --text-muted: #6E6759;
+      --accent: #16181B;
+      --accent-text: #FFFFFF;
+      --accent-hover: #000000;
+      --focus-ring: #16181B;
+      --success: #1E6A42;
+      --progress: #26609B;
+      --warning: #7E5210;
+      --danger: #A63C33;
+      --offline: #7A746A;
+      --success-bg: rgba(30, 106, 66, 0.10);
+      --progress-bg: rgba(38, 96, 155, 0.10);
+      --warning-bg: rgba(126, 82, 16, 0.10);
+      --danger-bg: rgba(166, 60, 51, 0.10);
+      --ink-quiet: rgba(22, 24, 27, 0.08);
+      --scrim: rgba(46, 41, 32, 0.34);
+      --shadow-float: 0 8px 24px -12px rgba(46, 41, 32, 0.32);
+      --header-bg: #F4EFE2;
     }
 
     body.light-theme {
-      --bg-base: #F8FAFC;
+      --bg-base: #F5F6F7;
       --bg-surface: #FFFFFF;
       --bg-card: #FFFFFF;
-      --bg-card-hover: #F1F5F9;
-      --border-color: #E2E8F0;
-      --border-active: #4F46E5;
-      --text-primary: #0F172A;
-      --text-secondary: #475569;
-      --text-muted: #94A3B8;
-      --accent: #4F46E5;
-      --accent-hover: #4338CA;
-      --accent-glow: rgba(79, 70, 229, 0.15);
-      --success: #10B981;
-      --success-glow: rgba(16, 185, 129, 0.15);
-      --warning: #D97706;
-      --danger: #DC2626;
-      --header-bg: rgba(255, 255, 255, 0.92);
+      --bg-card-hover: #F5F6F7;
+      --border-color: rgba(20, 22, 25, 0.12);
+      --border-strong: rgba(20, 22, 25, 0.16);
+      --border-active: rgba(20, 22, 25, 0.24);
+      --text-primary: #16181B;
+      --text-secondary: #4A5158;
+      --text-muted: #6C747C;
+      --accent: #16181B;
+      --accent-text: #FFFFFF;
+      --accent-hover: #000000;
+      --focus-ring: #16181B;
+      --success: #1F6E44;
+      --progress: #2C6FB3;
+      --warning: #8A5A12;
+      --danger: #B4453C;
+      --offline: #7C848C;
+      --success-bg: rgba(31, 110, 68, 0.10);
+      --progress-bg: rgba(44, 111, 179, 0.10);
+      --warning-bg: rgba(138, 90, 18, 0.10);
+      --danger-bg: rgba(180, 69, 60, 0.10);
+      --ink-quiet: rgba(22, 24, 27, 0.06);
+      --scrim: rgba(20, 22, 25, 0.32);
+      --shadow-float: 0 8px 24px -12px rgba(20, 22, 25, 0.28);
+      --header-bg: #FFFFFF;
     }
 
     * {
@@ -87,13 +131,35 @@
 
     body {
       font-family: var(--font-family);
+      font-variant-numeric: tabular-nums;
       background-color: var(--bg-base);
       color: var(--text-primary);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      transition: var(--transition);
+      transition: background-color 200ms linear, color 200ms linear;
       overflow-x: hidden;
+    }
+
+    :focus { outline: none; }
+
+    :focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+      border-radius: var(--radius-xs);
+    }
+
+    /* Every machine value reads as one: address, size, speed, chunk count, code. */
+    .data {
+      font-family: var(--font-data);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
     }
 
     /* Header */
@@ -101,320 +167,381 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
       background-color: var(--header-bg);
       border-bottom: 1px solid var(--border-color);
-      padding: 12px 20px;
+      padding: 10px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
     }
 
     .brand-wrap {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
+      min-width: 0;
     }
 
     .brand-logo {
-      width: 40px;
-      height: 40px;
-      border-radius: var(--radius-md);
-      background: linear-gradient(135deg, var(--accent), #818CF8);
+      width: 26px;
+      height: 26px;
+      border-radius: var(--radius-xs);
+      background: var(--accent);
+      color: var(--accent-text);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px var(--accent-glow);
+      flex-shrink: 0;
     }
 
     .brand-logo svg {
-      width: 22px;
-      height: 22px;
-      stroke: #FFFFFF;
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
     }
 
     .brand-info h1 {
-      font-size: 17px;
-      font-weight: 700;
-      line-height: 1.2;
+      font-size: 15px;
+      font-weight: 650;
+      line-height: 1.25;
+      letter-spacing: -0.01em;
     }
 
     .brand-info p {
-      font-size: 12px;
-      color: var(--text-secondary);
+      font-size: 11.5px;
+      color: var(--text-muted);
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
+    /* A bare status dot: state, so it may carry colour - and it clears 3:1
+       against every surface here. */
     .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
+      width: 7px;
+      height: 7px;
+      border-radius: var(--radius-full);
       background-color: var(--success);
       display: inline-block;
-      box-shadow: 0 0 8px var(--success);
-      animation: pulse 2s infinite;
+      flex-shrink: 0;
+      animation: liveTick 2.4s ease-in-out infinite;
     }
 
-    @keyframes pulse {
-      0% { transform: scale(0.95); opacity: 0.8; }
-      50% { transform: scale(1.15); opacity: 1; }
-      100% { transform: scale(0.95); opacity: 0.8; }
+    @keyframes liveTick {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
     }
 
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
 
     .theme-btn {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
-      color: var(--text-primary);
-      width: 38px;
-      height: 38px;
-      border-radius: var(--radius-full);
+      color: var(--text-secondary);
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
+      flex-shrink: 0;
       transition: var(--transition);
     }
 
     .theme-btn:hover {
       border-color: var(--border-active);
+      color: var(--text-primary);
     }
 
     /* Container */
     .portal-container {
-      max-width: 880px;
+      max-width: 720px;
       margin: 0 auto;
       width: 100%;
-      padding: 24px 16px 60px;
+      padding: 16px 14px 56px;
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      gap: 16px;
     }
 
     /* Host info banner */
     .host-banner-card {
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
-      border-radius: var(--radius-lg);
-      padding: 16px 20px;
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
       gap: 12px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
     }
 
     .host-meta {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
+      min-width: 0;
     }
 
     .host-avatar {
-      width: 46px;
-      height: 46px;
-      border-radius: 14px;
-      background: rgba(99, 102, 241, 0.12);
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--accent);
+      color: var(--text-secondary);
+      flex-shrink: 0;
     }
 
     .host-avatar svg {
-      width: 24px;
-      height: 24px;
+      width: 18px;
+      height: 18px;
+    }
+
+    .host-details {
+      min-width: 0;
     }
 
     .host-details h2 {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
+      overflow-wrap: anywhere;
     }
 
     .host-details span {
-      font-size: 12px;
-      color: var(--text-secondary);
+      font-size: 11.5px;
+      color: var(--text-muted);
+      font-family: var(--font-data);
+      font-variant-numeric: tabular-nums;
     }
 
     .auth-badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 12px;
+      padding: 4px 10px;
       border-radius: var(--radius-full);
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 600;
-      background: rgba(16, 185, 129, 0.12);
-      color: var(--success);
-      border: 1px solid rgba(16, 185, 129, 0.3);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-color);
+    }
+
+    .auth-badge svg {
+      width: 13px;
+      height: 13px;
+      flex-shrink: 0;
     }
 
     .auth-badge.unlocked {
-      background: rgba(16, 185, 129, 0.12);
+      background: var(--success-bg);
       color: var(--success);
-      border-color: rgba(16, 185, 129, 0.3);
+      border-color: transparent;
     }
 
     .auth-badge.locked {
-      background: rgba(245, 158, 11, 0.12);
+      background: var(--warning-bg);
       color: var(--warning);
-      border-color: rgba(245, 158, 11, 0.3);
+      border-color: transparent;
     }
 
-    /* Tabs switch */
+    /* Tabs */
     .portal-tabs {
       display: flex;
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
-      border-radius: var(--radius-md);
-      padding: 4px;
-      gap: 4px;
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      gap: 3px;
     }
 
     .portal-tab-btn {
       flex: 1;
       border: none;
       background: transparent;
-      color: var(--text-secondary);
+      color: var(--text-muted);
       font-family: var(--font-family);
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
-      padding: 10px 16px;
-      border-radius: 10px;
+      padding: 9px 8px;
+      border-radius: calc(var(--radius-sm) - 2px);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: 6px;
+      /* The two labels are the whole explanation of what each tab does; they wrap
+         on a narrow phone instead of being cut off at the edge. */
+      min-width: 0;
+      white-space: normal;
+      line-height: 1.3;
+      text-align: center;
       transition: var(--transition);
+    }
+
+    .portal-tab-btn svg {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
     }
 
     .portal-tab-btn.active {
       background: var(--accent);
-      color: #FFFFFF;
-      box-shadow: 0 2px 8px var(--accent-glow);
+      color: var(--accent-text);
     }
 
     /* Sections */
     .portal-section {
       display: none;
       flex-direction: column;
-      gap: 20px;
+      gap: 14px;
     }
 
     .portal-section.active {
       display: flex;
+      animation: paneFade 160ms var(--ease-out);
     }
 
-    /* Upload Card */
+    @keyframes paneFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* Upload card */
     .upload-card {
       background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: var(--radius-lg);
-      padding: 28px 20px;
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 22px 16px;
       text-align: center;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 16px;
-      transition: var(--transition);
+      gap: 10px;
       cursor: pointer;
       position: relative;
+      transition: var(--transition);
     }
 
     .upload-card:hover, .upload-card.dragover {
       border-color: var(--accent);
-      background: var(--bg-card-hover);
-      transform: translateY(-2px);
+      border-style: solid;
+      background: var(--bg-card);
     }
 
     .upload-icon-circle {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      background: rgba(99, 102, 241, 0.12);
-      color: var(--accent);
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      background: var(--ink-quiet);
+      color: var(--text-primary);
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 4px;
     }
 
     .upload-icon-circle svg {
-      width: 36px;
-      height: 36px;
+      width: 17px;
+      height: 17px;
     }
 
     .upload-title {
-      font-size: 18px;
-      font-weight: 700;
+      font-size: 14px;
+      font-weight: 600;
     }
 
     .upload-desc {
-      font-size: 13px;
-      color: var(--text-secondary);
-      max-width: 440px;
-      line-height: 1.5;
+      font-size: 12px;
+      color: var(--text-muted);
+      max-width: 420px;
+      line-height: 1.6;
     }
 
     .btn-select-file {
       background: var(--accent);
-      color: #FFFFFF;
-      border: none;
+      color: var(--accent-text);
+      border: 1px solid var(--accent);
       font-family: var(--font-family);
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
-      padding: 12px 28px;
-      border-radius: var(--radius-full);
+      padding: 9px 16px;
+      border-radius: var(--radius-sm);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      justify-content: center;
+      gap: 6px;
       transition: var(--transition);
-      box-shadow: 0 4px 14px var(--accent-glow);
     }
 
     .btn-select-file:hover {
       background: var(--accent-hover);
-      transform: scale(1.02);
+      border-color: var(--accent-hover);
     }
 
-    /* Upload Task Progress List */
+    .btn-select-file:active {
+      transform: translateY(1px);
+    }
+
+    .btn-select-file svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Upload task list */
     .task-queue-card {
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
-      border-radius: var(--radius-lg);
-      padding: 20px;
+      border-radius: var(--radius-md);
+      padding: 14px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
     }
 
     .card-title-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
     }
 
     .card-title-row h3 {
-      font-size: 15px;
+      font-size: 11px;
       font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .task-stats {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      font-family: var(--font-data);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .task-items-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     .task-item {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
-      border-radius: var(--radius-md);
-      padding: 14px 16px;
+      border-radius: var(--radius-sm);
+      padding: 12px;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -428,124 +555,180 @@
     }
 
     .task-file-name {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      min-width: 0;
     }
 
     .task-status-badge {
-      font-size: 12px;
+      font-family: var(--font-data);
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
       font-weight: 600;
-      padding: 3px 8px;
+      padding: 2px 8px;
       border-radius: var(--radius-full);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .task-status-badge.transferring {
-      background: rgba(99, 102, 241, 0.15);
-      color: var(--accent);
+      background: var(--progress-bg);
+      color: var(--progress);
     }
 
     .task-status-badge.done {
-      background: rgba(16, 185, 129, 0.15);
+      background: var(--success-bg);
       color: var(--success);
     }
 
     .task-status-badge.error {
-      background: rgba(239, 68, 68, 0.15);
+      background: var(--danger-bg);
       color: var(--danger);
     }
 
     .task-progress-bar {
       height: 6px;
-      background: rgba(255, 255, 255, 0.08);
-      border-radius: 3px;
+      background: var(--ink-quiet);
+      border-radius: var(--radius-full);
       overflow: hidden;
-    }
-
-    body.eyecare-theme .task-progress-bar, body.light-theme .task-progress-bar {
-      background: rgba(0, 0, 0, 0.08);
     }
 
     .task-progress-fill {
       height: 100%;
-      background: linear-gradient(90deg, var(--accent), #818CF8);
+      background: var(--progress);
       width: 0%;
-      border-radius: 3px;
-      transition: width 0.15s ease;
+      border-radius: var(--radius-full);
+      transition: width var(--dur-2) var(--ease-out);
     }
+
+    .task-progress-fill.done { background: var(--success); }
+    .task-progress-fill.error { background: var(--danger); }
 
     .task-item-foot {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 12px;
-      color: var(--text-secondary);
+      gap: 12px;
+      font-family: var(--font-data);
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+      color: var(--text-muted);
     }
 
-    /* Files download section */
+    .task-error {
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--text-secondary);
+      border-left: 2px solid var(--danger);
+      padding-left: 8px;
+    }
+
+    .task-error strong {
+      color: var(--danger);
+      font-weight: 600;
+    }
+
+    .task-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-mini {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      font-family: var(--font-family);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .btn-mini:hover {
+      border-color: var(--border-active);
+    }
+
+    .btn-mini.is-primary {
+      background: var(--accent);
+      color: var(--accent-text);
+      border-color: var(--accent);
+    }
+
+    /* Files list */
     .files-card {
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
-      border-radius: var(--radius-lg);
-      padding: 20px;
+      border-radius: var(--radius-md);
+      padding: 14px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
     }
 
     .files-list {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
 
     .file-row {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
-      border-radius: var(--radius-md);
-      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 14px;
+      gap: 12px;
       transition: var(--transition);
     }
 
     .file-row:hover {
       border-color: var(--border-active);
-      background: var(--bg-card-hover);
     }
 
     .file-left {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       min-width: 0;
       flex: 1;
     }
 
     .file-icon-box {
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
-      background: rgba(99, 102, 241, 0.12);
-      color: var(--accent);
+      width: 30px;
+      height: 30px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
     }
 
+    .file-icon-box svg {
+      width: 15px;
+      height: 15px;
+    }
+
     .file-meta {
       display: flex;
       flex-direction: column;
       min-width: 0;
+      gap: 1px;
     }
 
     .file-name {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
@@ -553,8 +736,10 @@
     }
 
     .file-subtext {
-      font-size: 12px;
-      color: var(--text-secondary);
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-data);
+      font-variant-numeric: tabular-nums;
     }
 
     .btn-download-file {
@@ -562,46 +747,68 @@
       color: var(--text-primary);
       border: 1px solid var(--border-color);
       font-family: var(--font-family);
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
-      padding: 8px 16px;
-      border-radius: var(--radius-full);
+      padding: 7px 12px;
+      border-radius: var(--radius-sm);
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       transition: var(--transition);
       flex-shrink: 0;
     }
 
     .btn-download-file:hover {
       background: var(--accent);
-      color: #FFFFFF;
+      color: var(--accent-text);
       border-color: var(--accent);
     }
 
+    .btn-download-file svg {
+      width: 13px;
+      height: 13px;
+    }
+
     .empty-placeholder {
-      padding: 40px 20px;
+      padding: 26px 16px;
       text-align: center;
-      color: var(--text-secondary);
-      font-size: 14px;
+      color: var(--text-muted);
+      font-size: 12.5px;
+      line-height: 1.6;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
+      gap: 4px;
+      border: 1px dashed var(--border-color);
+      border-radius: var(--radius-sm);
     }
 
-    /* PIN Unlock Modal */
+    .empty-placeholder svg { display: none; }
+
+    .empty-placeholder p {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* Pairing dialog. It has to survive a 320px-wide phone, so the digit cells
+       flex instead of holding a fixed width. */
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(8px);
+      background: var(--scrim);
       display: none;
       align-items: center;
       justify-content: center;
       z-index: 200;
-      padding: 20px;
+      padding: 14px;
+      animation: scrimIn 140ms var(--ease-out);
+    }
+
+    @keyframes scrimIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     .modal-overlay.active {
@@ -610,75 +817,149 @@
 
     .pin-modal-card {
       background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: var(--radius-lg);
-      padding: 28px 24px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 18px 16px;
       width: 100%;
-      max-width: 400px;
+      max-width: 380px;
+      max-height: calc(100vh - 28px);
+      overflow-y: auto;
       text-align: center;
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      gap: 10px;
+      box-shadow: var(--shadow-float);
+      animation: layerIn 160ms var(--ease-out);
+    }
+
+    @keyframes layerIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .pin-modal-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto;
+    }
+
+    .pin-modal-icon svg {
+      width: 17px;
+      height: 17px;
     }
 
     .pin-modal-card h3 {
-      font-size: 18px;
-      font-weight: 700;
+      font-size: 15px;
+      font-weight: 650;
     }
 
     .pin-modal-card p {
-      font-size: 13px;
+      font-size: 12.5px;
       color: var(--text-secondary);
-      line-height: 1.5;
+      line-height: 1.6;
     }
 
     .pin-inputs-row {
       display: flex;
       justify-content: center;
-      gap: 8px;
-      margin: 10px 0;
+      gap: 6px;
+      margin: 4px 0;
     }
 
     .pin-digit-input {
-      width: 46px;
-      height: 54px;
-      border-radius: var(--radius-md);
-      border: 1.5px solid var(--border-color);
+      flex: 1 1 0;
+      min-width: 0;
+      max-width: 46px;
+      height: 48px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
       background: var(--bg-card);
       color: var(--text-primary);
-      font-size: 24px;
-      font-weight: 700;
+      font-family: var(--font-data);
+      font-variant-numeric: tabular-nums;
+      font-size: 20px;
+      font-weight: 600;
       text-align: center;
-      outline: none;
+      padding: 0;
       transition: var(--transition);
     }
 
-    .pin-digit-input:focus {
+    .pin-digit-input:focus-visible {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-glow);
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 1px;
+    }
+
+    .pin-inputs-row.has-error .pin-digit-input {
+      border-color: var(--danger);
+    }
+
+    .pin-modal-error {
+      display: none;
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--danger);
+      text-align: left;
+    }
+
+    .pin-modal-error.visible {
+      display: block;
+    }
+
+    .pin-modal-error .hint {
+      display: block;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .pin-modal-footnote {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .pin-rerequest {
+      background: none;
+      border: none;
+      font-family: var(--font-family);
+      font-size: 12px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 2px;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .pin-rerequest:hover {
+      color: var(--text-primary);
     }
 
     /* Toast */
     .toast-box {
       position: fixed;
-      bottom: 24px;
+      bottom: 20px;
       left: 50%;
-      transform: translateX(-50%) translateY(100px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
+      transform: translateX(-50%) translateY(8px);
+      background: var(--bg-card);
+      border: 1px solid var(--border-strong);
       color: var(--text-primary);
-      padding: 12px 24px;
-      border-radius: var(--radius-full);
-      font-size: 14px;
-      font-weight: 600;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+      padding: 9px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12.5px;
+      font-weight: 500;
+      box-shadow: var(--shadow-float);
       z-index: 300;
       opacity: 0;
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      pointer-events: none;
+      transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out);
+      max-width: calc(100vw - 28px);
     }
 
     .toast-box.show {
@@ -688,19 +969,41 @@
 
     /* Responsive */
     @media (max-width: 600px) {
+      .portal-container {
+        padding: 12px 10px 48px;
+        gap: 12px;
+      }
+
       .host-banner-card {
         flex-direction: column;
         align-items: flex-start;
       }
+
       .upload-card {
-        padding: 24px 16px;
+        padding: 18px 14px;
       }
+
       .upload-title {
-        font-size: 16px;
+        font-size: 13.5px;
       }
+
       .btn-select-file {
         width: 100%;
-        justify-content: center;
+      }
+
+      .pin-digit-input {
+        height: 44px;
+        font-size: 18px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
       }
     }
   </style>
@@ -711,22 +1014,22 @@
   <header class="portal-header">
     <div class="brand-wrap">
       <div class="brand-logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
         </svg>
       </div>
       <div class="brand-info">
         <h1>SafeDrop 极速快传</h1>
-        <p><span class="status-dot"></span><span id="headerStatusText">独立文件收发门户</span></p>
+        <p><span class="status-dot"></span><span id="headerStatusText">正在连接对方端…</span></p>
       </div>
     </div>
 
     <div class="header-actions">
-      <button class="theme-btn" id="themeBtn" title="切换暗黑/护眼/明亮模式">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
-          <circle cx="12" cy="12" r="5"></circle>
-          <line x1="12" y1="1" x2="12" y2="3"></line>
-          <line x1="12" y1="21" x2="12" y2="23"></line>
+      <button class="theme-btn" id="themeBtn" title="切换深色/护眼/浅色" aria-label="切换显示模式">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M12 3v18" ></path>
+          <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"></path>
         </svg>
       </button>
     </div>
@@ -738,29 +1041,30 @@
     <div class="host-banner-card">
       <div class="host-meta">
         <div class="host-avatar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
             <line x1="8" y1="21" x2="16" y2="21"></line>
             <line x1="12" y1="17" x2="12" y2="21"></line>
           </svg>
         </div>
         <div class="host-details">
-          <h2 id="hostDeviceName">正在连接直连主机...</h2>
-          <span id="hostAddressText">局域网直连模式</span>
+          <h2 id="hostDeviceName">正在连接对方端…</h2>
+          <span id="hostAddressText">局域网直连</span>
         </div>
       </div>
-      <div class="auth-badge unlocked" id="authBadge">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+      <div class="auth-badge locked" id="authBadge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
-        <span id="authBadgeText">已建立信任直连</span>
+        <span id="authBadgeText">还没配对</span>
       </div>
     </div>
 
     <!-- Navigation Tabs -->
-    <div class="portal-tabs">
-      <button class="portal-tab-btn active" data-tab="uploadTab">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+    <div class="portal-tabs" role="tablist">
+      <button class="portal-tab-btn active" data-tab="uploadTab" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
           <polyline points="17 8 12 3 7 8"></polyline>
           <line x1="12" y1="3" x2="12" y2="15"></line>
@@ -768,8 +1072,8 @@
         <span>投送文件到对方端</span>
       </button>
 
-      <button class="portal-tab-btn" data-tab="downloadTab">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+      <button class="portal-tab-btn" data-tab="downloadTab" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
           <polyline points="7 10 12 15 17 10"></polyline>
           <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -784,19 +1088,15 @@
       
       <div class="upload-card" id="uploadDropZone">
         <div class="upload-icon-circle">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="17 8 12 3 7 8"></polyline>
             <line x1="12" y1="3" x2="12" y2="15"></line>
           </svg>
         </div>
-        <h3 class="upload-title">点击选择文件 / 拖拽投放到此处</h3>
-        <p class="upload-desc">直接通过局域网高速传输到对方设备，支持大视频、文档、相册无损原图，无需安装任何 App</p>
+        <h3 class="upload-title">选择文件，或把文件放到这里</h3>
+        <p class="upload-desc">走局域网直连，图片、视频、文档都可以，一次可以选多个。不用装应用，也不用上传到任何服务器。</p>
         <button class="btn-select-file" id="btnChooseFiles">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
           <span>选取文件开始投送</span>
         </button>
       </div>
@@ -805,11 +1105,9 @@
       <div class="task-queue-card" id="taskQueueCard" style="display: none;">
         <div class="card-title-row">
           <h3>传输进度</h3>
-          <span style="font-size: 12px; color: var(--text-secondary);" id="taskStatsText">进行中 0 项</span>
+          <span class="task-stats" id="taskStatsText">进行中 0 项</span>
         </div>
-        <div class="task-items-container" id="taskItemsContainer">
-          <!-- Injected dynamically -->
-        </div>
+        <div class="task-items-container" id="taskItemsContainer"></div>
       </div>
     </section>
 
@@ -817,53 +1115,49 @@
     <section class="portal-section" id="downloadTab">
       <div class="files-card">
         <div class="card-title-row">
-          <h3>对方端共享文件列表</h3>
-          <button class="btn-download-file" id="btnRefreshFiles" style="padding: 6px 12px; font-size: 12px;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;">
-              <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-            <span>刷新列表</span>
-          </button>
+          <h3>对方端的文件</h3>
+          <span class="task-stats" id="filesUpdatedAgo">等待读取</span>
         </div>
 
-        <div class="files-list" id="filesListContainer">
-          <div class="empty-placeholder" id="filesEmptyPlaceholder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:36px;height:36px;opacity:0.6;">
-              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-              <polyline points="13 2 13 9 20 9"></polyline>
-            </svg>
-            <p>对方端当前暂无接收或共享的文件</p>
-          </div>
+        <div class="empty-placeholder" id="filesEmptyPlaceholder">
+          <p>对方端还没有可取的文件</p>
+          <span>对方投送或保存东西之后，列表会自动更新，不用手动刷新。</span>
         </div>
+        <div class="files-list" id="filesListContainer"></div>
       </div>
     </section>
   </main>
 
-  <!-- PIN Unlock Modal -->
-  <div class="modal-overlay" id="pinModalOverlay">
+  <!-- Pairing dialog -->
+  <div class="modal-overlay" id="pinModalOverlay" role="dialog" aria-modal="true" aria-labelledby="pairDialogTitle">
     <div class="pin-modal-card">
-      <div style="width:48px;height:48px;border-radius:50%;background:rgba(99,102,241,0.15);color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:24px;height:24px;">
+      <div class="pin-modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
       </div>
-      <h3>配对验证</h3>
-      <p>请输入对方端屏幕上显示的 6 位动态 PIN 码以解锁文件上传与下载：</p>
+      <h3 id="pairDialogTitle">输入配对码</h3>
+      <p>对方屏幕上显示的那 6 位数字，就是配对码。输完最后一位会自动验证。</p>
       
-      <div class="pin-inputs-row">
-        <input type="tel" maxlength="1" class="pin-digit-input" data-index="0" autofocus>
-        <input type="tel" maxlength="1" class="pin-digit-input" data-index="1">
-        <input type="tel" maxlength="1" class="pin-digit-input" data-index="2">
-        <input type="tel" maxlength="1" class="pin-digit-input" data-index="3">
-        <input type="tel" maxlength="1" class="pin-digit-input" data-index="4">
-        <input type="tel" maxlength="1" class="pin-digit-input" data-index="5">
+      <div class="pin-inputs-row" id="pinInputsRow">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit-input" data-index="0" aria-label="配对码第 1 位">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit-input" data-index="1" aria-label="配对码第 2 位">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit-input" data-index="2" aria-label="配对码第 3 位">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit-input" data-index="3" aria-label="配对码第 4 位">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit-input" data-index="4" aria-label="配对码第 5 位">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit-input" data-index="5" aria-label="配对码第 6 位">
       </div>
 
-      <button class="btn-select-file" id="btnConfirmPin" style="width:100%;justify-content:center;margin-top:8px;">
+      <p class="pin-modal-error" id="pinModalError" role="alert"></p>
+
+      <button class="btn-select-file" id="btnConfirmPin" style="width:100%;margin-top:4px;">
         <span>立即验证</span>
       </button>
+
+      <button class="pin-rerequest" id="btnRerequestCode" type="button">对方换了一组？清空重填</button>
+
+      <p class="pin-modal-footnote">配对码只在这次连接里用：不写进存储、关掉页面就没了。这样这台手机被别人拿到时，也还原不出你们的会话。</p>
     </div>
   </div>
 
@@ -1036,6 +1330,7 @@
         hostInfo: null,
         files: [],
         tasks: [],
+        filesUpdatedAt: 0,
         theme: localStorage.getItem('safedrop_theme') || 'dark-theme'
       };
 
@@ -1053,9 +1348,12 @@
         taskStatsText: document.getElementById('taskStatsText'),
         filesListContainer: document.getElementById('filesListContainer'),
         filesEmptyPlaceholder: document.getElementById('filesEmptyPlaceholder'),
-        btnRefreshFiles: document.getElementById('btnRefreshFiles'),
+        filesUpdatedAgo: document.getElementById('filesUpdatedAgo'),
         themeBtn: document.getElementById('themeBtn'),
         pinModalOverlay: document.getElementById('pinModalOverlay'),
+        pinInputsRow: document.getElementById('pinInputsRow'),
+        pinModalError: document.getElementById('pinModalError'),
+        btnRerequestCode: document.getElementById('btnRerequestCode'),
         btnConfirmPin: document.getElementById('btnConfirmPin'),
         toastBox: document.getElementById('toastBox'),
         tabBtns: document.querySelectorAll('.portal-tab-btn'),
@@ -1073,21 +1371,19 @@
         await fetchHostInfo();
 
         if (pinParam || tokenParam) {
-          // Auto verify with URL parameters
+          // The link already carries the code, so try it straight away. On failure the sheet
+          // stays open with the reason next to the cells.
           await verifyPin(pinParam, tokenParam);
         } else {
-          // Check if session token exists
-          const savedPin = sessionStorage.getItem('safedrop_portal_pin');
-          if (savedPin) {
-            await verifyPin(savedPin);
-          } else {
-            // Require PIN
-            showPinModal();
-          }
+          // No silent restore: the pairing code is the shared secret, and storing it (in
+          // sessionStorage or anywhere else on the device) would let anyone holding this
+          // phone finish a handshake as us. Every visit asks again, on purpose.
+          showPinModal();
         }
 
         fetchFiles();
         setInterval(fetchFiles, 6000);
+        setInterval(updateFilesStamp, 1000);
       }
 
       // 2. Fetch host info
@@ -1099,18 +1395,21 @@
             state.hostInfo = data;
             const name = data.host?.name || data.name || `${window.location.hostname} (SafeDrop 端)`;
             dom.hostDeviceName.textContent = name;
-            dom.hostAddressText.textContent = `${window.location.hostname}:${window.location.port || 8899} • 局域网高速直连`;
+            dom.hostAddressText.textContent = `${window.location.hostname}:${window.location.port || 8899}`;
+            // The hub answered, so stop saying "connecting": what is actually outstanding is
+            // the pairing code, and the badge next to it already says that.
+            if (!session.active) dom.headerStatusText.textContent = '局域网已连通';
           }
         } catch (_) {
           dom.hostDeviceName.textContent = `${window.location.hostname} (SafeDrop 直连端)`;
         }
       }
 
-      // 3. Verify PIN by proving knowledge of the pairing secret over an ECDH session
+      // 3. Verify the pairing code by proving knowledge of it over an ECDH session
       async function verifyPin(pin, token = '') {
         const pairingSecret = String(pin || token || '');
         if (!pairingSecret) {
-          showPinModal();
+          showPinModal('先输入对方显示的 6 位配对码。');
           return false;
         }
 
@@ -1118,12 +1417,13 @@
         // browser hides it, and without it there is no way to encrypt the upload, so fail
         // with a pointer to the HTTPS portal instead of silently sending plaintext.
         if (!window.isSecureContext || !window.crypto || !window.crypto.subtle) {
-          dom.authBadge.className = 'auth-badge locked';
-          dom.authBadgeText.textContent = '当前地址不支持加密';
-          showToast('此页面无法加密传输：请改用桌面端显示的 https:// 门户地址打开');
-          showPinModal();
+          lockBadge('这个地址不能加密');
+          showPinModal('这个地址不支持加密。', '请改用桌面端显示的 https:// 开头的门户地址重新打开，再输一次配对码。');
           return false;
         }
+
+        setPairError(null);
+        setPairBusy(true);
 
         try {
           // a. Ephemeral key agreement
@@ -1138,13 +1438,20 @@
               curve: SafeDropCrypto.getCurve()
             })
           });
-          if (!initRes.ok) throw new Error(`handshake/init HTTP ${initRes.status}`);
+          if (!initRes.ok) {
+            setPairError(handshakeFailure('init', initRes.status));
+            return finishFailedPairing();
+          }
           const initData = await initRes.json();
 
           // The version marker is hashed into the key derivation, so a hub on another version would
           // fail the proof two steps below and look like a mistyped pairing code. Say what it is.
           if (initData.protocol !== SafeDropCrypto.PROTOCOL) {
-            throw new Error(`对端传输协议为 ${initData.protocol || '未知'}，本页面为 ${SafeDropCrypto.PROTOCOL}，请升级其中一端`);
+            setPairError({
+              message: '两端的传输协议版本不一样。',
+              hint: `对方是 ${initData.protocol || '未知'}，本页面是 ${SafeDropCrypto.PROTOCOL}。升级其中一端后再试。`
+            });
+            return finishFailedPairing();
           }
 
           // b. Derive the session key locally; the secret never leaves this browser
@@ -1165,76 +1472,197 @@
             // d. Confirm the hub holds the same key, which authenticates the peer
             const expected = SafeDropCrypto.toHex(await SafeDropCrypto.serverProof(keyBytes, initData.session_id));
             if (verifyData.server_proof !== expected) {
-              throw new Error('server proof mismatch');
+              setPairError({
+                message: '对方身份没有对上，已停止。',
+                hint: '两端算出的会话密钥不一致。确认输入的是同一台设备显示的配对码，然后重试。'
+              });
+              return finishFailedPairing();
             }
 
             session.id = initData.session_id;
             session.key = keyBytes;
             isVerified = true;
-            sessionStorage.setItem('safedrop_portal_pin', pairingSecret);
+            setPairBusy(false);
+            // Deliberately nothing is written to sessionStorage or localStorage here: the code
+            // is the shared secret, and a stored copy is a stored way to impersonate us.
             hidePinModal();
             dom.authBadge.className = 'auth-badge unlocked';
-            dom.authBadgeText.textContent = '端到端加密会话已建立';
+            dom.authBadgeText.textContent = '已连上，可以传输';
             dom.headerStatusText.textContent = '已连接，可随时传输';
-            showToast('已成功接入对方端（加密会话）');
+            showToast('已连上对方端');
             fetchFiles();
             return true;
           }
+
+          setPairError({
+            message: '对方不认这个配对码。',
+            hint: '最常见的原因是配对码已经换过一组。回到对方屏幕上读新的那组，或者点下面的「清空重填」。'
+          });
+          return finishFailedPairing();
         } catch (err) {
           console.warn('[SafeDrop] pairing failed:', err);
+          setPairError({
+            message: '连不上对方端。',
+            hint: '确认这台手机还连着同一个 Wi-Fi，对方那边的 SafeDrop 还开着。'
+          });
+          return finishFailedPairing();
         }
+      }
 
+      /** Turn an HTTP status into wording that names the next action. */
+      function handshakeFailure(stage, status) {
+        if (status === 401 || status === 403) {
+          return { message: '对方拒绝了这个请求。', hint: '配对码可能已经换过了。让对方重新显示一次，再输进来。' };
+        }
+        if (status >= 500) {
+          return { message: '对方端处理失败了。', hint: `对方返回了 ${status}。过几秒再点一次「立即验证」；一直这样的话，让对方重启 SafeDrop。（握手 ${stage}）` };
+        }
+        return { message: '握手没有完成。', hint: `对方返回了 ${status}。（握手 ${stage}）` };
+      }
+
+      function finishFailedPairing() {
         session.id = null;
         session.key = null;
-        dom.authBadge.className = 'auth-badge locked';
-        dom.authBadgeText.textContent = '未输入 PIN 解锁';
+        setPairBusy(false);
+        lockBadge('还没配对');
         showPinModal();
         return false;
       }
 
-      function showPinModal() {
+      function setPairBusy(busy) {
+        if (!dom.btnConfirmPin) return;
+        dom.btnConfirmPin.disabled = busy;
+        dom.btnConfirmPin.textContent = busy ? '连接中…' : '立即验证';
+      }
+
+      function lockBadge(text) {
+        dom.authBadge.className = 'auth-badge locked';
+        dom.authBadgeText.textContent = text;
+        dom.headerStatusText.textContent = '连上之后就可以传文件';
+      }
+
+      function setPairError(error) {
+        if (!dom.pinModalError) return;
+        dom.pinModalError.replaceChildren();
+        if (!error || !error.message) {
+          dom.pinModalError.classList.remove('visible');
+          if (dom.pinInputsRow) dom.pinInputsRow.classList.remove('has-error');
+          return;
+        }
+        const head = document.createElement('span');
+        head.textContent = error.message;
+        dom.pinModalError.appendChild(head);
+        if (error.hint) {
+          const hint = document.createElement('span');
+          hint.className = 'hint';
+          hint.textContent = error.hint;
+          dom.pinModalError.appendChild(hint);
+        }
+        dom.pinModalError.classList.add('visible');
+        if (dom.pinInputsRow) dom.pinInputsRow.classList.add('has-error');
+      }
+
+      function showPinModal(message, hint) {
         dom.pinModalOverlay.classList.add('active');
-        const firstInput = dom.pinModalOverlay.querySelector('.pin-digit-input[data-index="0"]');
-        if (firstInput) firstInput.focus();
+        if (message) setPairError({ message, hint });
+        const cells = pinCells();
+        cells.forEach(c => { c.value = ''; });
+        if (cells[0]) cells[0].focus();
       }
 
       function hidePinModal() {
         dom.pinModalOverlay.classList.remove('active');
+        setPairError(null);
+        // Wipe whatever was typed: the dialog is off screen but the digits are still in the DOM.
+        pinCells().forEach(c => { c.value = ''; });
+      }
+
+      function pinCells() {
+        return Array.from(dom.pinModalOverlay.querySelectorAll('.pin-digit-input'));
       }
 
       function initPinInputs() {
-        const inputs = Array.from(dom.pinModalOverlay.querySelectorAll('.pin-digit-input'));
+        const inputs = pinCells();
+
+        const submit = async () => {
+          const code = inputs.map(i => (i.value || '').trim()).join('');
+          if (code.length !== 6) {
+            setPairError({
+              message: `配对码是 6 位数字，现在还差 ${6 - code.length} 位。`,
+              hint: '看一下对方屏幕上显示的那 6 位数字。'
+            });
+            return;
+          }
+          await verifyPin(code);
+          if (!session.active) {
+            inputs.forEach(i => { i.value = ''; });
+            if (inputs[0]) inputs[0].focus();
+          }
+        };
+
         inputs.forEach((input, idx) => {
-          input.addEventListener('input', (e) => {
-            const val = e.target.value.trim();
-            if (val && idx < inputs.length - 1) {
-              inputs[idx + 1].focus();
+          input.addEventListener('input', () => {
+            const digits = (input.value || '').replace(/\D/g, '');
+            if (!digits) { input.value = ''; return; }
+            input.value = digits[0];
+            let cursor = idx + 1;
+            for (const ch of digits.slice(1)) {
+              if (cursor >= inputs.length) break;
+              inputs[cursor].value = ch;
+              cursor++;
             }
+            if (inputs.every(i => (i.value || '').length === 1)) {
+              submit();
+              return;
+            }
+            inputs[Math.min(cursor, inputs.length - 1)].focus();
           });
 
           input.addEventListener('keydown', (e) => {
             if (e.key === 'Backspace' && !input.value && idx > 0) {
+              e.preventDefault();
               inputs[idx - 1].focus();
+              inputs[idx - 1].value = '';
+            } else if (e.key === 'ArrowLeft' && idx > 0) {
+              e.preventDefault();
+              inputs[idx - 1].focus();
+            } else if (e.key === 'ArrowRight' && idx < inputs.length - 1) {
+              e.preventDefault();
+              inputs[idx + 1].focus();
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              submit();
             }
-            if (e.key === 'Enter') {
-              dom.btnConfirmPin.click();
-            }
+          });
+
+          input.addEventListener('paste', (e) => {
+            const text = (e.clipboardData || window.clipboardData).getData('text');
+            if (!text) return;
+            e.preventDefault();
+            const digits = text.replace(/\D/g, '').slice(0, 6);
+            if (!digits) return;
+            inputs.forEach(i => { i.value = ''; });
+            digits.split('').forEach((ch, i) => { inputs[i].value = ch; });
+            const next = Math.min(digits.length, inputs.length - 1);
+            inputs[next].focus();
+            if (digits.length === 6) submit();
           });
         });
 
-        dom.btnConfirmPin.addEventListener('click', async () => {
-          const pinStr = inputs.map(i => i.value.trim()).join('');
-          if (pinStr.length !== 6) {
-            showToast('请输入完整的 6 位数字 PIN 码');
-            return;
-          }
-          const ok = await verifyPin(pinStr);
-          if (!ok) {
-            showToast('PIN 码验证未通过，请核对对方屏幕显示的数字');
-            inputs.forEach(i => i.value = '');
-            inputs[0].focus();
-          }
-        });
+        dom.btnConfirmPin.addEventListener('click', submit);
+
+        // The hub rotates its code whenever a device finishes pairing, so the number on the
+        // peer's screen may already be a generation old. Nothing here can read the peer's new
+        // code for us - that would stop it being a secret - so this clears the field and sends
+        // the user back to the other screen.
+        if (dom.btnRerequestCode) {
+          dom.btnRerequestCode.addEventListener('click', () => {
+            inputs.forEach(i => { i.value = ''; });
+            setPairError(null);
+            showToast('已清空，请输对方屏幕上的新配对码');
+            if (inputs[0]) inputs[0].focus();
+          });
+        }
       }
 
       // 4. File Upload (1MB chunked stream)
@@ -1284,16 +1712,18 @@
         files.forEach(file => {
           uploadSingleFile(file);
         });
-        showToast(`已添加 ${files.length} 个投送任务`);
+        showToast(`已排进 ${files.length} 个投送任务`);
       }
 
       async function uploadSingleFile(file) {
         const CHUNK_SIZE = 1024 * 1024;
         const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
-        const taskId = `portal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-        const task = {
-          id: taskId,
+        // A retry passes the same File back in, so reuse its task row instead of stacking a
+        // duplicate. The task keeps the File handle, which is what makes retrying in place
+        // possible at all.
+        const task = file.portalTask || {
+          id: `portal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           name: file.name,
           size: file.size,
           uploaded: 0,
@@ -1302,8 +1732,16 @@
           totalChunks: totalChunks,
           currentChunk: 0
         };
+        const taskId = task.id;
 
-        state.tasks.unshift(task);
+        file.portalTask = task;
+        task.file = file;
+        task.status = 'transferring';
+        task.uploaded = 0;
+        task.currentChunk = 0;
+        task.speed = '0 KB/s';
+        task.error = '';
+        if (state.tasks.indexOf(task) === -1) state.tasks.unshift(task);
         renderTasks();
 
         let lastBytes = 0;
@@ -1362,44 +1800,88 @@
             }
           } catch (err) {
             task.status = 'error';
-            task.speed = '传输中断';
+            task.speed = '已中断';
+            task.error = uploadFailureText(err);
             renderTasks();
-            showToast(`文件 "${file.name}" 投送失败: ${err.message}`);
             return;
           }
         }
 
         task.status = 'done';
-        task.speed = '投送完成';
+        task.speed = '已送达';
+        task.error = '';
         renderTasks();
-        showToast(`文件 "${file.name}" 已成功投送到对方端！`);
+        showToast(`已把「${file.name}」送到对方端`);
         fetchFiles();
+      }
+
+      /** Plain wording for why a send stopped, with the next step in it. */
+      function uploadFailureText(err) {
+        const raw = String((err && err.message) || err || '');
+        if (raw.indexOf('尚未建立加密会话') !== -1) {
+          return '还没和对方配对，内容没法加密。输入对方屏幕上的配对码后，点重试。';
+        }
+        if (raw.indexOf('Failed to fetch') !== -1) {
+          return '和对方断开了连接。确认这台手机还连着同一个 Wi-Fi，然后点重试。';
+        }
+        return `没有传完（${raw}）。文件还在手机上，点重试可以再发一次。`;
+      }
+
+      function retryTask(taskId) {
+        const task = state.tasks.find(t => t.id === taskId);
+        if (!task || !task.file) return;
+        if (!session.active) {
+          showPinModal('先输入配对码。', '连上之后点重试就能继续发这个文件。');
+          return;
+        }
+        uploadSingleFile(task.file);
+      }
+
+      function cancelTask(taskId) {
+        state.tasks = state.tasks.filter(t => t.id !== taskId);
+        renderTasks();
       }
 
       function renderTasks() {
         const activeCount = state.tasks.filter(t => t.status === 'transferring').length;
-        dom.taskStatsText.textContent = activeCount > 0 ? `进行中 ${activeCount} 项` : `全部任务完成`;
+        dom.taskStatsText.textContent = activeCount > 0 ? `进行中 ${activeCount} 项` : '全部任务完成';
+        dom.taskQueueCard.style.display = state.tasks.length ? 'flex' : 'none';
 
         dom.taskItemsContainer.innerHTML = state.tasks.map(t => {
           const pct = t.size === 0 ? 100 : Math.min(100, Math.round((t.uploaded / t.size) * 100));
+          const fillClass = t.status === 'done' ? 'done' : (t.status === 'error' ? 'error' : '');
+          const badge = t.status === 'done' ? '已完成' : (t.status === 'error' ? '失败' : `${pct}%`);
+          const actions = t.status === 'error' ? `
+            <div class="task-actions">
+              <button type="button" class="btn-mini is-primary" data-retry="${escapeHtml(t.id)}">重试</button>
+              <button type="button" class="btn-mini" data-cancel="${escapeHtml(t.id)}">取消</button>
+            </div>
+          ` : '';
           return `
             <div class="task-item">
               <div class="task-item-head">
                 <span class="task-file-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
-                <span class="task-status-badge ${t.status}">
-                  ${t.status === 'done' ? '已完成' : (t.status === 'error' ? '失败' : `${pct}%`)}
-                </span>
+                <span class="task-status-badge ${t.status}">${badge}</span>
               </div>
               <div class="task-progress-bar">
-                <div class="task-progress-fill" style="width: ${pct}%;"></div>
+                <div class="task-progress-fill ${fillClass}" style="width: ${pct}%;"></div>
               </div>
               <div class="task-item-foot">
-                <span>${formatBytes(t.uploaded)} / ${formatBytes(t.size)} (${t.currentChunk}/${t.totalChunks} 块)</span>
-                <span>${t.speed}</span>
+                <span>${formatBytes(t.uploaded)} / ${formatBytes(t.size)} · ${t.currentChunk}/${t.totalChunks} 块</span>
+                <span>${escapeHtml(t.speed || '')}</span>
               </div>
+              ${t.error ? `<p class="task-error"><strong>没传完。</strong> ${escapeHtml(t.error)}</p>` : ''}
+              ${actions}
             </div>
           `;
         }).join('');
+
+        dom.taskItemsContainer.querySelectorAll('[data-retry]').forEach(btn => {
+          btn.addEventListener('click', () => retryTask(btn.getAttribute('data-retry')));
+        });
+        dom.taskItemsContainer.querySelectorAll('[data-cancel]').forEach(btn => {
+          btn.addEventListener('click', () => cancelTask(btn.getAttribute('data-cancel')));
+        });
       }
 
       // 5. Fetch & render files for download
@@ -1409,65 +1891,70 @@
           if (res.ok) {
             const data = await res.json();
             state.files = data.files || [];
+            state.filesUpdatedAt = Date.now();
+            updateFilesStamp();
             renderFilesList();
           }
         } catch (_) {}
       }
 
+      /** The list polls, so the readout replaces the refresh button. */
+      function updateFilesStamp() {
+        if (!dom.filesUpdatedAgo) return;
+        if (!state.filesUpdatedAt) { dom.filesUpdatedAgo.textContent = '等待读取'; return; }
+        const seconds = Math.max(0, Math.round((Date.now() - state.filesUpdatedAt) / 1000));
+        dom.filesUpdatedAgo.textContent = seconds < 2 ? '刚刚更新' : (seconds < 60 ? `${seconds} 秒前更新` : `${Math.floor(seconds / 60)} 分钟前更新`);
+      }
+
       function renderFilesList() {
         if (!state.files || state.files.length === 0) {
           dom.filesEmptyPlaceholder.style.display = 'flex';
-          dom.filesListContainer.querySelectorAll('.file-row').forEach(e => e.remove());
+          dom.filesListContainer.innerHTML = '';
           return;
         }
 
         dom.filesEmptyPlaceholder.style.display = 'none';
         const rowsHtml = state.files.map(f => {
-          const timeStr = f.mtime ? new Date(f.mtime).toLocaleString() : '';
+          const timeStr = f.mtime ? formatTimestamp(f.mtime) : '';
           return `
             <div class="file-row">
               <div class="file-left">
                 <div class="file-icon-box">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
                     <polyline points="13 2 13 9 20 9"></polyline>
                   </svg>
                 </div>
                 <div class="file-meta">
                   <span class="file-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
-                  <span class="file-subtext">${formatBytes(f.size || 0)} ${timeStr ? '• ' + timeStr : ''}</span>
+                  <span class="file-subtext">${formatBytes(f.size || 0)}${timeStr ? ' · ' + timeStr : ''}</span>
                 </div>
               </div>
               <button type="button" class="btn-download-file" data-download="${escapeHtml(f.name)}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="7 10 12 15 17 10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
-                <span>下载</span>
+                <span>存到本机</span>
               </button>
             </div>
           `;
         }).join('');
 
-        // Downloads need the session header, so they cannot be plain anchor links.
+        // Downloads need the session header, so they cannot be plain anchor links. The rows
+        // have to exist before they are wired: binding first and then replacing innerHTML left
+        // every download button pointing at nodes that were already gone.
+        dom.filesListContainer.innerHTML = rowsHtml;
         dom.filesListContainer.querySelectorAll('[data-download]').forEach((btn) => {
           btn.addEventListener('click', () => downloadFile(btn.getAttribute('data-download')));
         });
-
-        dom.filesListContainer.innerHTML = rowsHtml;
       }
-
-      dom.btnRefreshFiles.addEventListener('click', () => {
-        fetchFiles();
-        showToast('共享文件列表已刷新');
-      });
 
       // 5.1 Download a vault file through an authenticated request
       async function downloadFile(name) {
         if (!session.active) {
-          showToast('请先输入配对码解锁');
-          showPinModal();
+          showPinModal('先输入配对码。', '对方端要求先配对，才允许取文件。');
           return;
         }
         try {
@@ -1486,9 +1973,9 @@
           a.click();
           a.remove();
           setTimeout(() => URL.revokeObjectURL(url), 10000);
-          showToast(`已开始下载 ${name}`);
+          showToast(`开始保存 ${name}`);
         } catch (err) {
-          showToast(`下载失败: ${err.message}`);
+          showToast('这个文件没取下来，再试一次');
         }
       }
 
@@ -1537,6 +2024,14 @@
           return (bytesPerSec / (1024 * 1024)).toFixed(1) + ' MB/s';
         }
         return (bytesPerSec / 1024).toFixed(0) + ' KB/s';
+      }
+
+      /** Fixed-width, no locale: a timestamp here is a reading, not prose. */
+      function formatTimestamp(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value);
+        const pad = n => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
       }
 
       function escapeHtml(str) {

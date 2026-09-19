@@ -1,11 +1,11 @@
 package com.safedrop.mobile.ui.adapter
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.safedrop.mobile.R
 import com.safedrop.mobile.databinding.ItemTransferTaskBinding
+import com.safedrop.mobile.ui.Palette
 
 data class TransferTaskItem(
     val taskId: String,
@@ -22,7 +22,7 @@ class TransferTaskAdapter(
     private val tasks: MutableList<TransferTaskItem> = mutableListOf()
 ) : RecyclerView.Adapter<TransferTaskAdapter.ViewHolder>() {
 
-    private var currentTheme = "dark"
+    private var currentTheme = Palette.DARK
 
     fun setThemeMode(theme: String) {
         currentTheme = theme
@@ -75,45 +75,41 @@ class TransferTaskAdapter(
 
     inner class ViewHolder(private val binding: ItemTransferTaskBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: TransferTaskItem) {
+            val ctx = binding.root.context
+            val p = Palette.of(ctx, currentTheme)
             binding.tvTaskFileName.text = item.fileName
-            binding.tvTaskDevice.text = if (item.isDownload) "来自: ${item.remoteDevice}" else "投送至: ${item.remoteDevice}"
+            binding.tvTaskDevice.text = ctx.getString(
+                if (item.isDownload) R.string.transfer_from else R.string.transfer_to,
+                item.remoteDevice
+            )
             binding.pbTaskProgress.progress = item.progress
+            // Percent and speed are machine values: monospace keeps the column still as they run.
+            binding.tvTaskProgressPercent.typeface = android.graphics.Typeface.MONOSPACE
+            binding.tvTaskSpeed.typeface = android.graphics.Typeface.MONOSPACE
             binding.tvTaskProgressPercent.text = "${item.progress}%"
-            binding.tvTaskSpeed.text = if (item.status == "已完成") "已存入沙箱" else String.format(java.util.Locale.US, "%.1f MB/s", item.speedMbps)
+            binding.tvTaskSpeed.text = if (item.status == "已完成")
+                ctx.getString(R.string.transfer_saved_here)
+            else String.format(java.util.Locale.US, "%.1f MB/s", item.speedMbps)
 
             binding.ivTaskDirection.setImageResource(if (item.isDownload) R.drawable.ic_download else R.drawable.ic_send)
 
             binding.tvTaskStatusBadge.text = item.status
             when (item.status) {
-                "已完成" -> binding.tvTaskStatusBadge.setTextColor(Color.parseColor("#10B981"))
-                "失败" -> binding.tvTaskStatusBadge.setTextColor(Color.parseColor("#EF4444"))
-                else -> binding.tvTaskStatusBadge.setTextColor(Color.parseColor("#06B6D4"))
+                "已完成" -> binding.tvTaskStatusBadge.setTextColor(p.ready)
+                "失败" -> binding.tvTaskStatusBadge.setTextColor(p.failure)
+                else -> binding.tvTaskStatusBadge.setTextColor(p.active)
             }
 
-            // Theme styling
-            when (currentTheme) {
-                "eyecare" -> {
-                    binding.cardTransferTask.setCardBackgroundColor(Color.parseColor("#F5EDDC"))
-                    binding.cardTransferTask.strokeColor = Color.parseColor("#D5C7AA")
-                    binding.tvTaskFileName.setTextColor(Color.parseColor("#000000"))
-                    binding.tvTaskDevice.setTextColor(Color.parseColor("#3D382B"))
-                    binding.tvTaskProgressPercent.setTextColor(Color.parseColor("#000000"))
-                }
-                "light" -> {
-                    binding.cardTransferTask.setCardBackgroundColor(Color.parseColor("#FFFFFF"))
-                    binding.cardTransferTask.strokeColor = Color.parseColor("#E2E8F0")
-                    binding.tvTaskFileName.setTextColor(Color.parseColor("#000000"))
-                    binding.tvTaskDevice.setTextColor(Color.parseColor("#64748B"))
-                    binding.tvTaskProgressPercent.setTextColor(Color.parseColor("#000000"))
-                }
-                else -> {
-                    binding.cardTransferTask.setCardBackgroundColor(Color.parseColor("#111827"))
-                    binding.cardTransferTask.strokeColor = Color.parseColor("#334155")
-                    binding.tvTaskFileName.setTextColor(Color.parseColor("#F8FAFC"))
-                    binding.tvTaskDevice.setTextColor(Color.parseColor("#94A3B8"))
-                    binding.tvTaskProgressPercent.setTextColor(Color.parseColor("#F8FAFC"))
-                }
-            }
+            binding.cardTransferTask.setCardBackgroundColor(p.surface)
+            binding.cardTransferTask.strokeColor = p.hairline
+            binding.ivTaskDirection.backgroundTintList = p.states(p.raised)
+            binding.ivTaskDirection.imageTintList = p.states(p.ink)
+            binding.tvTaskFileName.setTextColor(p.ink)
+            binding.tvTaskDevice.setTextColor(p.inkFaint)
+            binding.tvTaskProgressPercent.setTextColor(p.inkMuted)
+            binding.tvTaskSpeed.setTextColor(p.inkMuted)
+            binding.pbTaskProgress.setIndicatorColor(p.active)
+            binding.pbTaskProgress.setTrackColor(p.raised)
         }
     }
 }

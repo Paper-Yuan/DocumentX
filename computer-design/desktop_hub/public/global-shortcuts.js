@@ -1,12 +1,15 @@
 /**
- * SafeDrop Global Shortcuts Integration
- * Handles events emitted by Tauri global shortcuts
- * 
- * Shortcuts:
- * - Ctrl+Shift+S (Cmd+Shift+S on macOS): Toggle window visibility
- * - Ctrl+Shift+Q (Cmd+Shift+Q on macOS): Quick send file
- * - Ctrl+Shift+R (Cmd+Shift+R on macOS): Refresh device list
- * - Escape: Close dialogs (frontend only)
+ * SafeDrop global shortcut bridge.
+ *
+ * The Tauri shell registers system-wide shortcuts and emits an event for each one; this
+ * file turns those events into actions in the page. It is loaded last, after app.js, and
+ * talks to it through the small `window.SafeDropUI` surface app.js publishes.
+ *
+ * Shortcuts (as registered by the shell):
+ * - Ctrl+Shift+S (Cmd+Shift+S on macOS): toggle window visibility
+ * - Ctrl+Shift+Q (Cmd+Shift+Q on macOS): pick files to send
+ * - Ctrl+Shift+R (Cmd+Shift+R on macOS): ask the network again right now
+ * - Escape: close the pairing sheet or the pairing-code dialog
  */
 
 // Check if running in Tauri environment
@@ -38,69 +41,66 @@ document.addEventListener('keydown', (event) => {
 });
 
 /**
- * Handle quick send file action
- * Opens file selection dialog
+ * Handle quick send file action: open the OS file picker for the page.
  */
 function handleQuickSend() {
-    // Try to find and click the file input or send button
-    const fileInput = document.querySelector('input[type="file"]');
-    const sendButton = document.querySelector('[data-action="send"], .send-button, #sendButton');
-
-    if (fileInput) {
-        fileInput.click();
-    } else if (sendButton) {
-        sendButton.click();
-    } else {
-        // Dispatch custom event for the application to handle
-        const event = new CustomEvent('quick-send-triggered', {
-            detail: { source: 'global-shortcut' }
-        });
-        document.dispatchEvent(event);
-        console.warn('Quick send: No file input or send button found, dispatched custom event');
-    }
-}
-
-/**
- * Handle device list refresh action
- */
-function handleRefreshDevices() {
-    // Try to find and click the refresh button
-    const refreshButton = document.querySelector('[data-action="refresh"], .refresh-button, #refreshButton');
-
-    if (refreshButton) {
-        refreshButton.click();
-    } else {
-        // Dispatch custom event for the application to handle
-        const event = new CustomEvent('refresh-devices-triggered', {
-            detail: { source: 'global-shortcut' }
-        });
-        document.dispatchEvent(event);
-        console.warn('Refresh devices: No refresh button found, dispatched custom event');
-    }
-}
-
-/**
- * Handle Escape key press
- * Closes open dialogs, modals, or overlays
- */
-function handleEscapeKey() {
-    // Try to find and close any open dialogs/modals
-    const closeButtons = document.querySelectorAll(
-        '.modal.is-active .modal-close, ' +
-        '.dialog.is-open .dialog-close, ' +
-        '[data-action="close"], ' +
-        '.overlay.is-visible .close-button'
-    );
-
-    if (closeButtons.length > 0) {
-        closeButtons[0].click();
+    if (window.SafeDropUI && window.SafeDropUI.pickFiles) {
+        window.SafeDropUI.pickFiles();
         return;
     }
 
-    // Try to find visible modals/dialogs and hide them
-    const modals = document.querySelectorAll('.modal.is-active, .dialog.is-open, .overlay.is-visible');
-    if (modals.length > 0) {
-        modals[0].classList.remove('is-active', 'is-open', 'is-visible');
+    // Dispatch custom event for the application to handle
+    const event = new CustomEvent('quick-send-triggered', {
+        detail: { source: 'global-shortcut' }
+    });
+    document.dispatchEvent(event);
+    console.warn('Quick send: no SafeDropUI.pickFiles available, dispatched custom event');
+}
+
+/**
+ * Handle the "ask again" action. Discovery already polls on a timer, so this only skips
+ * the wait; the readout next to the list is what tells you when it last answered.
+ */
+function handleRefreshDevices() {
+    if (window.SafeDropUI && window.SafeDropUI.refreshDevices) {
+        window.SafeDropUI.refreshDevices();
+        return;
+    }
+
+    // Dispatch custom event for the application to handle
+    const event = new CustomEvent('refresh-devices-triggered', {
+        detail: { source: 'global-shortcut' }
+    });
+    document.dispatchEvent(event);
+    console.warn('Refresh devices: no SafeDropUI.refreshDevices available, dispatched custom event');
+}
+
+/**
+ * Handle Escape key press: close the topmost floating layer, if there is one.
+ *
+ * The selectors here are the ones this page actually uses. The previous version looked for
+ * `.modal.is-active` / `.dialog.is-open`, which this UI never sets, so Escape did nothing.
+ * app.js also handles Escape for the pairing sheet; both paths are idempotent (removing a
+ * class that is already gone), so running twice is harmless.
+ */
+function handleEscapeKey() {
+    const openPairSheet = document.querySelector('.sheet-overlay.open');
+    if (openPairSheet) {
+        const closeBtn = openPairSheet.querySelector('#pairSheetClose, #pairCancelBtn');
+        if (closeBtn) closeBtn.click();
+        return;
+    }
+
+    const openModal = document.querySelector('.modal-overlay.open');
+    if (openModal) {
+        const closeBtn = openModal.querySelector('.modal-close-btn, #modalDoneBtn');
+        if (closeBtn) closeBtn.click();
+        return;
+    }
+
+    const contextMenu = document.querySelector('.chat-context-menu');
+    if (contextMenu) {
+        contextMenu.remove();
         return;
     }
 

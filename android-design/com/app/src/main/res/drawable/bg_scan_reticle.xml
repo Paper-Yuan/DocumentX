@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Viewfinder frame: a 1dp hairline square with 8dp corners. Previously the scanner reused
+     ic_launcher as its "frame", which painted the app logo over the preview. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_medium" />
+    <solid android:color="@android:color/transparent" />
+    <stroke
+        android:width="@dimen/hairline_width"
+        android:color="#66F2F4F5" />
+</shape>

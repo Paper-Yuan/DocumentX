@@ -1,7 +1,12 @@
 /**
- * SafeDrop Hub Frontend Responsive Controller
- * Features radar canvas animation, device topology discovery, 4MB chunked streaming upload,
- * Reed-Solomon QR code matrix generator, vault storage management, three-state theme switcher, and cross-platform interaction.
+ * SafeDrop Hub front end.
+ *
+ * Visual language: "本地仪表台" - neutral surfaces, ink for interaction, colour
+ * only for state. Everything machine-readable (addresses, sizes, speeds, chunk
+ * counts, codes, fingerprints, timestamps) renders in mono with tabular figures.
+ *
+ * What this file owns: device discovery, the encrypted relay upload path, the
+ * per-device conversation window, the received-file list, and settings.
  */
 
 (function () {
@@ -140,12 +145,21 @@
   /**
    * Sessions with relay destinations, keyed by "host:port". The hub holds no key for a
    * phone, so the UI must negotiate one directly before it can send encrypted chunks.
+   *
+   * This Map is the only place a session lives, and it is process memory: the pairing code
+   * is the shared secret that derives the key, so persisting either one (localStorage,
+   * sessionStorage, anywhere on disk) would let anyone who opens this profile later finish
+   * the handshake as us. A page reload therefore asks for the code again, on purpose.
    */
   const peerSessions = new Map();
 
   /**
    * Establish (or reuse) an encrypted session with a peer device.
-   * Prompts for the peer's pairing PIN, which the peer displays on its own screen.
+   *
+   * The pairing code is read off the peer's own screen, so the ask happens in an inline
+   * sheet rather than window.prompt(): a prompt cannot name the device it is asking about,
+   * cannot accept a pasted pairing link, and turns a rejected code into a sentence the user
+   * cannot act on.
    */
   async function ensurePeerSession(dev) {
     if (!dev || !dev.ip) return null;
@@ -154,57 +168,423 @@
     if (existing) return existing;
 
     if (!SafeDropCrypto.available()) {
-      showToast('当前页面无法加密：请通过 https:// 门户地址打开');
+      showToast('当前页面无法加密：请通过 https:// 门户地址打开', 'error');
       return null;
     }
 
-    const secret = window.prompt(
-      `请与「${dev.name}」完成加密配对\n\n输入该设备屏幕上显示的 6 位配对码：`,
-      ''
-    );
-    if (!secret) return null;
+    // Several files queued at the same unpaired device should ask for the code once.
+    if (pairing.pending && pairing.pending.key === key) return pairing.pending.promise;
+
+    const promise = openPairSheet(dev);
+    pairing.pending = { key, promise };
+    promise.finally(() => {
+      if (pairing.pending && pairing.pending.promise === promise) pairing.pending = null;
+    });
+    return promise;
+  }
+
+  /** Pairing sheet state. Nothing here survives a reload, by design. */
+  const pairing = {
+    dev: null,
+    host: '',
+    port: 8899,
+    busy: false,
+    resolve: null,
+    pending: null,
+    restoredFor: null
+  };
+
+  /**
+   * How long to wait for a peer that may simply not be there any more. Without a ceiling a
+   * device that went to sleep leaves the sheet sitting on "连接中…" until the browser gives
+   * up on the TCP connect, which on Windows is tens of seconds and reads as a hang.
+   */
+  const PAIRING_TIMEOUT_MS = 8000;
+
+  /**
+   * The pairing handshake, split out from the sheet so the sheet stays about input and
+   * errors. Returns a result object instead of throwing: every failure here has a next
+   * action, and the whole point is to name it.
+   */
+  async function runPairingHandshake(host, port, pairingSecret) {
+    const origin = `http://${host}:${port}`;
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, PAIRING_TIMEOUT_MS);
 
     try {
       const pair = await SafeDropCrypto.generateKeyPair();
       const rawPub = await SafeDropCrypto.exportPublicKey(pair);
 
-      const initRes = await fetch(`http://${dev.ip}:${dev.port || 8899}/api/v1/handshake/init`, {
+      const initRes = await fetch(`${origin}/api/v1/handshake/init`, {
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ public_key: SafeDropCrypto.toHex(rawPub), curve: SafeDropCrypto.getCurve() })
       });
-      if (!initRes.ok) throw new Error(`handshake/init HTTP ${initRes.status}`);
+      if (!initRes.ok) return httpFailure('init', initRes.status);
       const initData = await initRes.json();
 
       // The version marker is hashed into the key derivation, so a peer on another version would
       // go on to fail the proof below - which reads exactly like a mistyped pairing code. Naming
       // the real cause here is the difference between a fixable error and a confusing one.
       if (initData.protocol !== SafeDropCrypto.PROTOCOL) {
-        throw new Error(`对端传输协议为 ${initData.protocol || '未知'}，本机为 ${SafeDropCrypto.PROTOCOL}，请升级其中一端`);
+        return {
+          ok: false,
+          message: '两端的传输协议版本不一样，连不上。',
+          hint: `对方是 ${initData.protocol || '未知'}，本机是 ${SafeDropCrypto.PROTOCOL}。升级其中一端后重试。`
+        };
       }
 
       const shared = await SafeDropCrypto.deriveSharedSecret(pair, SafeDropCrypto.fromHex(initData.server_public_key));
-      const sessionKey = await SafeDropCrypto.deriveSessionKeyBytes(shared, initData.session_id, secret);
+      const sessionKey = await SafeDropCrypto.deriveSessionKeyBytes(shared, initData.session_id, pairingSecret);
 
       const proof = SafeDropCrypto.toHex(await SafeDropCrypto.clientProof(sessionKey, initData.session_id));
-      const verifyRes = await fetch(`http://${dev.ip}:${dev.port || 8899}/api/v1/handshake/verify`, {
+      const verifyRes = await fetch(`${origin}/api/v1/handshake/verify`, {
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: initData.session_id, proof })
       });
-      if (!verifyRes.ok) throw new Error('pairing rejected; check the code');
+      if (!verifyRes.ok) {
+        return {
+          ok: false,
+          message: '对方不认这个配对码。',
+          hint: '最常见的原因是配对码已经换过一组。让对方重新显示配对码，或者点下面的「重新获取」。'
+        };
+      }
 
       const verifyData = await verifyRes.json();
       const expected = SafeDropCrypto.toHex(await SafeDropCrypto.serverProof(sessionKey, initData.session_id));
-      if (verifyData.server_proof !== expected) throw new Error('server proof mismatch');
+      if (verifyData.server_proof !== expected) {
+        return {
+          ok: false,
+          message: '对方身份没有对上，已停止连接。',
+          hint: '两端算出的会话密钥不一致。确认你们输入的是同一台设备显示的配对码，然后重试。'
+        };
+      }
 
       const session = { id: initData.session_id, key: sessionKey };
-      peerSessions.set(key, session);
-      showToast(`已与 ${dev.name} 建立加密会话`);
-      return session;
+      peerSessions.set(`${host}:${port}`, session);
+      return { ok: true, session };
     } catch (err) {
-      showToast(`与 ${dev.name} 配对失败: ${err.message}`);
-      return null;
+      if (timedOut) {
+        return {
+          ok: false,
+          message: `等 ${PAIRING_TIMEOUT_MS / 1000} 秒，${host}:${port} 没有回应。`,
+          hint: '对方可能已经休眠或退出了 SafeDrop。让它回到前台后再点一次「连接」。'
+        };
+      }
+      // A rejected fetch is the browser refusing to reach the address at all; the raw
+      // message is "Failed to fetch", which tells the user nothing.
+      return {
+        ok: false,
+        message: `连不上 ${host}:${port}。`,
+        hint: '确认这台设备开着 SafeDrop、和你在同一个网络，地址没有写错。'
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Turn an HTTP status into wording that names the next action. */
+  function httpFailure(stage, status) {
+    if (status === 401 || status === 403) {
+      return {
+        ok: false,
+        message: '对方拒绝了这个请求。',
+        hint: '这台设备可能已经把配对码换掉了，或者还没准备好接收。让对方重新打开配对界面再试。'
+      };
+    }
+    if (status === 404) {
+      return {
+        ok: false,
+        message: '这个地址上没有 SafeDrop 服务。',
+        hint: '地址或端口写错了。检查上面的连接地址，或者从设备列表里重新选一台。'
+      };
+    }
+    if (status >= 500) {
+      return {
+        ok: false,
+        message: '对方端处理失败了。',
+        hint: `对方返回了 ${status}。稍等几秒点「连接」再试；一直这样的话，让对方重启 SafeDrop。（握手 ${stage}）`
+      };
+    }
+    return {
+      ok: false,
+      message: '握手没有完成。',
+      hint: `对方返回了 ${status}。让对方重新显示配对码后再试一次。（握手 ${stage}）`
+    };
+  }
+
+  /** Open the sheet for a device and resolve with a session, or null if the user bails. */
+  function openPairSheet(dev, overrides = {}) {
+    closePairSheet(null);
+    pairing.dev = dev;
+    pairing.host = overrides.host || dev.ip;
+    pairing.port = Number(overrides.port || dev.port || 8899);
+
+    if (dom.pairSheetTitle) dom.pairSheetTitle.textContent = getDeviceDisplayName(dev);
+    if (dom.pairSheetAddr) dom.pairSheetAddr.textContent = `${pairing.host}:${pairing.port}`;
+    if (dom.pairHostInput) dom.pairHostInput.value = pairing.host;
+    if (dom.pairPortInput) dom.pairPortInput.value = String(pairing.port);
+    if (dom.pairTechPeer) dom.pairTechPeer.textContent = `${pairing.host}:${pairing.port}`;
+    if (dom.pairUriInput) dom.pairUriInput.value = '';
+    setPairUriError('');
+    setPairError('');
+    clearPairCells();
+
+    if (dom.pairSheetOverlay) dom.pairSheetOverlay.classList.add('open');
+    focusPairCell(0);
+
+    return new Promise(resolve => { pairing.resolve = resolve; });
+  }
+
+  function closePairSheet(value) {
+    if (dom.pairSheetOverlay) dom.pairSheetOverlay.classList.remove('open');
+    // Wipe the typed code even on success: it is the shared secret, and the field is
+    // still in the DOM after the sheet slides away.
+    clearPairCells();
+    setPairError('');
+    const resolve = pairing.resolve;
+    pairing.resolve = null;
+    pairing.dev = null;
+    if (resolve) resolve(value);
+  }
+
+  function pairCellInputs() {
+    return dom.pairCells ? Array.from(dom.pairCells.querySelectorAll('.pin-cell')) : [];
+  }
+
+  function readPairCode() {
+    return pairCellInputs().map(i => (i.value || '').trim()).join('');
+  }
+
+  function clearPairCells() {
+    pairCellInputs().forEach(i => { i.value = ''; i.classList.remove('filled'); });
+    if (dom.pairCells) dom.pairCells.classList.remove('has-error');
+  }
+
+  function focusPairCell(index) {
+    const cells = pairCellInputs();
+    const target = cells[Math.max(0, Math.min(index, cells.length - 1))];
+    if (target) { target.focus(); target.select(); }
+  }
+
+  /** Spread a digit string across the cells, starting at `from`. */
+  function fillPairCells(digits, from = 0) {
+    const cells = pairCellInputs();
+    let i = from;
+    for (const ch of digits) {
+      if (i >= cells.length) break;
+      if (!/\d/.test(ch)) continue;
+      cells[i].value = ch;
+      cells[i].classList.add('filled');
+      i++;
+    }
+    return i;
+  }
+
+  function setPairError(message, hint) {
+    if (!dom.pairError) return;
+    dom.pairError.replaceChildren();
+    if (!message && !hint) {
+      dom.pairError.classList.remove('visible');
+      if (dom.pairCells) dom.pairCells.classList.remove('has-error');
+      return;
+    }
+    if (message) {
+      const head = document.createElement('span');
+      head.textContent = message;
+      dom.pairError.appendChild(head);
+    }
+    if (hint) {
+      const sub = document.createElement('span');
+      sub.className = 'field-error-hint';
+      sub.textContent = hint;
+      dom.pairError.appendChild(sub);
+    }
+    dom.pairError.classList.add('visible');
+    if (dom.pairCells) dom.pairCells.classList.toggle('has-error', !!message);
+  }
+
+  function setPairUriError(message) {
+    if (!dom.pairUriError) return;
+    dom.pairUriError.textContent = message || '';
+    dom.pairUriError.classList.toggle('visible', !!message);
+  }
+
+  function setPairBusy(busy) {
+    pairing.busy = busy;
+    if (dom.pairConnectBtn) {
+      dom.pairConnectBtn.disabled = busy;
+      dom.pairConnectBtn.textContent = busy ? '连接中…' : '连接';
+    }
+    pairCellInputs().forEach(c => { c.disabled = busy; });
+  }
+
+  /**
+   * Accept a whole pairing link. The QR the app shows encodes exactly
+   * `safedrop://pair?ip=…&port=…&fp=…&token=…&pin=…`, so scanning or pasting it should
+   * not cost the user three keystrokes they already had.
+   */
+  function applyPairUri(raw) {
+    const text = String(raw || '').trim();
+    if (!text) { setPairUriError('先粘贴一段链接，再点解析。'); return false; }
+
+    const queryAt = text.indexOf('?');
+    const params = new URLSearchParams(queryAt >= 0 ? text.slice(queryAt + 1) : text);
+    const ip = (params.get('ip') || '').trim();
+    const port = (params.get('port') || '').trim();
+    const pin = (params.get('pin') || '').trim();
+
+    if (!ip && !pin) {
+      setPairUriError('这段链接里没有地址也没有配对码，换一条 safedrop:// 开头的试试。');
+      return false;
+    }
+
+    setPairUriError('');
+    if (ip) {
+      pairing.host = ip;
+      if (dom.pairHostInput) dom.pairHostInput.value = ip;
+    }
+    if (port && /^\d+$/.test(port)) {
+      pairing.port = Number(port);
+      if (dom.pairPortInput) dom.pairPortInput.value = port;
+    }
+    if (dom.pairTechPeer) dom.pairTechPeer.textContent = `${pairing.host}:${pairing.port}`;
+    if (dom.pairSheetAddr) dom.pairSheetAddr.textContent = `${pairing.host}:${pairing.port}`;
+    if (pin) {
+      clearPairCells();
+      const used = fillPairCells(pin, 0);
+      focusPairCell(used >= 6 ? 5 : used);
+      if (used >= 6) submitPairing();
+    } else {
+      focusPairCell(0);
+    }
+    return true;
+  }
+
+  /** Read the address fields, so a hand-corrected value is honoured. */
+  function syncPairAddress() {
+    const host = dom.pairHostInput ? dom.pairHostInput.value.trim() : pairing.host;
+    const port = dom.pairPortInput ? dom.pairPortInput.value.trim() : String(pairing.port);
+    if (host) pairing.host = host;
+    if (/^\d+$/.test(port)) pairing.port = Number(port);
+    if (dom.pairTechPeer) dom.pairTechPeer.textContent = `${pairing.host}:${pairing.port}`;
+    if (dom.pairSheetAddr) dom.pairSheetAddr.textContent = `${pairing.host}:${pairing.port}`;
+  }
+
+  async function submitPairing() {
+    if (!pairing.dev || pairing.busy) return;
+    syncPairAddress();
+    const code = readPairCode();
+    if (code.length !== 6) {
+      setPairError('配对码是 6 位数字，现在还差 ' + (6 - code.length) + ' 位。', '看一下对方设备屏幕上显示的配对码；也可以粘贴对方给的链接。');
+      focusPairCell(code.length);
+      return;
+    }
+
+    setPairBusy(true);
+    setPairError('');
+    const result = await runPairingHandshake(pairing.host, pairing.port, code);
+    setPairBusy(false);
+
+    if (result.ok) {
+      const name = getDeviceDisplayName(pairing.dev);
+      closePairSheet(result.session);
+      showToast(`已与 ${name} 建立加密会话`, 'ready');
+      renderDevicesGrid();
+      return;
+    }
+
+    setPairError(result.message, result.hint);
+    clearPairCells();
+    focusPairCell(0);
+  }
+
+  function initPairSheet() {
+    const cells = pairCellInputs();
+
+    cells.forEach((input, idx) => {
+      input.addEventListener('input', () => {
+        const value = (input.value || '').replace(/\D/g, '');
+        if (value.length > 1) {
+          // Autocomplete / IME can hand us the whole code in one go.
+          input.value = value[0];
+          fillPairCells(value.slice(1), idx + 1);
+        } else {
+          input.value = value;
+        }
+        input.classList.toggle('filled', !!input.value);
+        if (input.value && idx < cells.length - 1) {
+          cells[idx + 1].focus();
+          return;
+        }
+        if (readPairCode().length === 6) submitPairing();
+      });
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !input.value && idx > 0) {
+          e.preventDefault();
+          cells[idx - 1].focus();
+          cells[idx - 1].value = '';
+          cells[idx - 1].classList.remove('filled');
+        } else if (e.key === 'ArrowLeft' && idx > 0) {
+          e.preventDefault();
+          cells[idx - 1].focus();
+        } else if (e.key === 'ArrowRight' && idx < cells.length - 1) {
+          e.preventDefault();
+          cells[idx + 1].focus();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          submitPairing();
+        }
+      });
+
+      input.addEventListener('paste', (e) => {
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        if (!text) return;
+        e.preventDefault();
+        if (text.indexOf('safedrop://') !== -1 || text.indexOf('pin=') !== -1) {
+          applyPairUri(text);
+        } else {
+          clearPairCells();
+          const used = fillPairCells(text.replace(/\D/g, ''), 0);
+          if (used >= 6) submitPairing();
+          else focusPairCell(used);
+        }
+      });
+    });
+
+    if (dom.pairUriApplyBtn) dom.pairUriApplyBtn.addEventListener('click', () => applyPairUri(dom.pairUriInput.value));
+    if (dom.pairUriInput) {
+      dom.pairUriInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); applyPairUri(dom.pairUriInput.value); }
+      });
+    }
+    if (dom.pairHostInput) dom.pairHostInput.addEventListener('change', syncPairAddress);
+    if (dom.pairPortInput) dom.pairPortInput.addEventListener('change', syncPairAddress);
+
+    if (dom.pairConnectBtn) dom.pairConnectBtn.addEventListener('click', submitPairing);
+    if (dom.pairCancelBtn) dom.pairCancelBtn.addEventListener('click', () => closePairSheet(null));
+    if (dom.pairSheetClose) dom.pairSheetClose.addEventListener('click', () => closePairSheet(null));
+    if (dom.pairSheetOverlay) {
+      dom.pairSheetOverlay.addEventListener('click', (e) => {
+        if (e.target === dom.pairSheetOverlay) closePairSheet(null);
+      });
+    }
+
+    // "对方换了一组？重新获取": the hub rotates its own code whenever a device finishes
+    // pairing, so the code on screen may already be a generation old. This cannot read the
+    // peer's code for us - that would make it no secret at all - so it resets the sheet and
+    // sends the user back to the peer's screen with a clean field.
+    if (dom.pairRetryFetch) {
+      dom.pairRetryFetch.addEventListener('click', () => {
+        clearPairCells();
+        setPairError('', '请在对方设备的屏幕上读取新的 6 位配对码。');
+        focusPairCell(0);
+      });
     }
   }
 
@@ -239,6 +619,10 @@
       try { return JSON.parse(localStorage.getItem('safedrop_chat_histories') || '{}'); } catch (_) { return {}; }
     })(),
     lastMessageTimestamp: 0,
+    // When the discovery list last answered, for the "N 秒前更新" readout. The poller is
+    // the refresh, so the user reads a timestamp instead of pressing a button.
+    devicesUpdatedAt: 0,
+    filesUpdatedAt: 0,
     // NEW: Concurrent transfer queue management
     transferQueue: [],
     activeTransfers: 0,
@@ -248,6 +632,30 @@
       try { return localStorage.getItem('safedrop_compression_enabled') !== 'false'; } catch (_) { return true; }
     })(),
   };
+
+  /**
+   * What this app remembers between visits, and what it refuses to.
+   *
+   * Safe: the last device you picked and the panel you were on, so reopening the hub
+   * puts you back where you were. Not safe: the pairing code or any session derived
+   * from it - the code is the only thing separating a paired peer from anyone else on
+   * this network, so writing it to disk would hand that out to whoever opens the profile.
+   */
+  const RECENT_DEVICE_KEY = 'safedrop_recent_device_id';
+  const ACTIVE_TAB_KEY = 'safedrop_active_tab';
+
+  function readStored(key, fallback) {
+    try {
+      const value = localStorage.getItem(key);
+      return value === null ? fallback : value;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function writeStored(key, value) {
+    try { localStorage.setItem(key, value); } catch (_) {}
+  }
 
   // DOM element references
   const dom = {
@@ -272,10 +680,11 @@
     qrModeAppBtn: document.getElementById('qrModeAppBtn'),
     qrModeWebBtn: document.getElementById('qrModeWebBtn'),
     refreshPinBtn: document.getElementById('refreshPinBtn'),
-    refreshDevicesBtn: document.getElementById('refreshDevicesBtn'),
-    refreshFilesBtn: document.getElementById('refreshFilesBtn'),
+    deviceListUpdatedAgo: document.getElementById('deviceListUpdatedAgo'),
+    radarBlips: document.getElementById('radarBlips'),
     openDirFromFilesBtn: document.getElementById('openDirFromFilesBtn'),
     clearCompletedTasksBtn: document.getElementById('clearCompletedTasksBtn'),
+    noTransfersPickBtn: document.getElementById('noTransfersPickBtn'),
     toastContainer: document.getElementById('toastContainer'),
     onlineDeviceCountTag: document.getElementById('onlineDeviceCountTag'),
     sidebarIpText: document.getElementById('sidebarIpText'),
@@ -301,6 +710,7 @@
     chatActiveName: document.getElementById('chatActiveName'),
     chatActiveTag: document.getElementById('chatActiveTag'),
     chatActiveMeta: document.getElementById('chatActiveMeta'),
+    chatSecurityTag: document.getElementById('chatSecurityTag'),
     chatClearHistoryBtn: document.getElementById('chatClearHistoryBtn'),
     chatQuickSendBtn: document.getElementById('chatQuickSendBtn'),
     chatStreamContainer: document.getElementById('chatStreamContainer'),
@@ -310,22 +720,42 @@
     chatAttachBtn: document.getElementById('chatAttachBtn'),
     chatTextInput: document.getElementById('chatTextInput'),
     chatSendTextBtn: document.getElementById('chatSendTextBtn'),
+    chatSecurityTagText: document.getElementById('chatSecurityTagText'),
+    // Pairing sheet (replaces window.prompt)
+    pairSheetOverlay: document.getElementById('pairSheetOverlay'),
+    pairSheetTitle: document.getElementById('pairSheetTitle'),
+    pairSheetAddr: document.getElementById('pairSheetAddr'),
+    pairSheetClose: document.getElementById('pairSheetClose'),
+    pairCells: document.getElementById('pairPinCells'),
+    pairError: document.getElementById('pairError'),
+    pairUriDetails: document.getElementById('pairUriDetails'),
+    pairUriInput: document.getElementById('pairUriInput'),
+    pairUriApplyBtn: document.getElementById('pairUriApplyBtn'),
+    pairUriError: document.getElementById('pairUriError'),
+    pairHostInput: document.getElementById('pairHostInput'),
+    pairPortInput: document.getElementById('pairPortInput'),
+    pairTechPeer: document.getElementById('pairTechPeer'),
+    pairConnectBtn: document.getElementById('pairConnectBtn'),
+    pairCancelBtn: document.getElementById('pairCancelBtn'),
+    pairRetryFetch: document.getElementById('pairRetryFetch'),
   };
 
   // 1. Initialization
   async function init() {
     initTheme();
     initNavigation();
-    initRadarCanvas();
     initDragAndDrop();
     initModalEvents();
+    initPairSheet();
     initSettingsEvents();
     initChatEvents();
+    initShortcuts();
+    restoreLastPanel();
     loadDeviceNamesManager(); // NEW: Load device names manager on init
 
     if (state.isMobile) {
       if (dom.currentRoleBadge) dom.currentRoleBadge.textContent = '移动便携端';
-      if (dom.radarCenterLabel) dom.radarCenterLabel.textContent = '手机本机';
+      if (dom.radarCenterLabel) dom.radarCenterLabel.textContent = '这台电脑';
     }
 
     await fetchSystemInfo();
@@ -341,6 +771,8 @@
     setInterval(fetchFiles, 6000);
     // Periodic messages query (every 1.2 seconds for real-time chat)
     setInterval(fetchMessages, 1200);
+    // The "N 秒前更新" readouts tick on their own, so they stay honest between polls.
+    setInterval(updatePollStamps, 1000);
     // Periodic system info refresh. The hub rotates the pairing PIN every time a device
     // completes the handshake, so a value fetched once at startup goes stale after the first
     // successful pairing and every later device that reads the on-screen PIN or scans the
@@ -355,6 +787,27 @@
     if (state.isMobile) {
       announceMobileDevice();
     }
+  }
+
+  /**
+   * Bridge for global-shortcuts.js, which runs outside this closure and is loaded by the
+   * Tauri shell. Without these the shortcut handlers in that file fall back to clicking
+   * ids that do not exist in this page.
+   */
+  function initShortcuts() {
+    window.SafeDropUI = {
+      refreshDevices: () => fetchDevices(),
+      pickFiles: () => dom.filePickerInput && dom.filePickerInput.click(),
+      openPairingFor: (deviceId) => {
+        const dev = state.devices.find(d => d.id === deviceId);
+        if (dev) openPairSheet(dev);
+      },
+      switchTab,
+      hasSessionFor: (deviceId) => {
+        const dev = state.devices.find(d => d.id === deviceId);
+        return dev ? peerSessions.has(`${dev.ip}:${dev.port || 8899}`) : false;
+      }
+    };
   }
 
   // 2. Theme management (Dark / Eye-Care / Light three-state switcher)
@@ -454,14 +907,26 @@
     const navButtons = document.querySelectorAll('.nav-item, .bottom-nav-item');
     navButtons.forEach(btn => {
       btn.addEventListener('click', () => {
-        const targetTab = btn.getAttribute('data-tab');
-        switchTab(targetTab);
+        switchTab(btn.getAttribute('data-tab'));
       });
+    });
+
+    // Escape closes the topmost layer. Nothing else in this app is modal, so there is
+    // no stack to unwind.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (dom.pairSheetOverlay && dom.pairSheetOverlay.classList.contains('open')) {
+        closePairSheet(null);
+      } else if (dom.qrModalOverlay && dom.qrModalOverlay.classList.contains('open')) {
+        dom.qrModalOverlay.classList.remove('open');
+      }
     });
   }
 
   function switchTab(tabId) {
+    if (!tabId) return;
     state.currentTab = tabId;
+    writeStored(ACTIVE_TAB_KEY, tabId);
 
     // Switch active tab pane
     document.querySelectorAll('.tab-pane').forEach(pane => {
@@ -472,6 +937,12 @@
     document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(btn => {
       btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
     });
+  }
+
+  /** Restore the panel the user was on, if it still exists in this build. */
+  function restoreLastPanel() {
+    const saved = readStored(ACTIVE_TAB_KEY, 'radarTab');
+    if (document.getElementById(saved)) switchTab(saved);
   }
 
   // 4. Fetch server system info
@@ -487,15 +958,19 @@
       if (dom.sidebarIpText) dom.sidebarIpText.textContent = `${data.localIp}:${data.port}`;
       const localIpBadge = document.getElementById('hubLocalIpBadge');
       if (localIpBadge) localIpBadge.textContent = `${data.localIp}:${data.port}`;
+      if (dom.radarCenterLabel && !state.isMobile) {
+        dom.radarCenterLabel.textContent = data.host?.name || '这台电脑';
+      }
       if (dom.settingsFingerprintText) dom.settingsFingerprintText.textContent = data.fingerprint;
       if (dom.settingsPinText) dom.settingsPinText.textContent = data.pin;
       if (dom.modalPinCode) dom.modalPinCode.textContent = data.pin;
       if (dom.modalDirectUrl) dom.modalDirectUrl.textContent = data.webUrl;
-      if (dom.sandboxDirText) dom.sandboxDirText.textContent = `落盘沙箱目录: ${data.downloadDir}`;
+      if (dom.sandboxDirText) dom.sandboxDirText.textContent = data.downloadDir;
       if (dom.settingsDirDisplay) dom.settingsDirDisplay.textContent = data.downloadDir;
       if (dom.customDownloadDirInput && !dom.customDownloadDirInput.value) {
         dom.customDownloadDirInput.value = data.downloadDir;
       }
+      markActivePreset();
 
       // Render pairing QR code
       if (qrChanged) renderQrCode();
@@ -520,10 +995,10 @@
       if (dom.settingsPinText) dom.settingsPinText.textContent = data.pin;
       if (dom.modalPinCode) dom.modalPinCode.textContent = data.pin;
       renderQrCode();
-      showToast(`动态配对 PIN 码已刷新: ${data.pin}`);
+      showToast(`已换一组配对码：${data.pin}`, 'attention');
     } catch (e) {
       await fetchSystemInfo();
-      showToast('动态 PIN 码已重新获取');
+      showToast('已重新获取配对码', 'attention');
     }
   }
 
@@ -583,6 +1058,17 @@
 
       state.devices = Array.from(mergedMap.values());
 
+      // Reopen where you left off. The device you last sent to is selected again if it is
+      // still on the network; its session is not restored, because a session key cannot be
+      // stored without storing the pairing code it came from.
+      if (!state.targetDevice) {
+        const rememberedId = readStored(RECENT_DEVICE_KEY, '');
+        if (rememberedId) {
+          const remembered = state.devices.find(d => d.id === rememberedId);
+          if (remembered) state.targetDevice = remembered;
+        }
+      }
+
       // If a target device was previously selected, verify it's still online or merge reference
       if (state.targetDevice) {
         const stillOnline = state.devices.find(d =>
@@ -597,29 +1083,110 @@
         }
       }
 
+      state.devicesUpdatedAt = Date.now();
+      updatePollStamps();
+
       if (dom.onlineDeviceCountTag) {
         dom.onlineDeviceCountTag.textContent = `${state.devices.length} 台在线`;
       }
 
+      const statusText = document.getElementById('discoveryStatusText');
+      if (statusText) {
+        statusText.textContent = state.devices.length === 0
+          ? '正在查找同一网络里的设备…'
+          : `已找到 ${state.devices.length} 台，仍在持续查找`;
+      }
+
       renderDevicesGrid();
       renderChatPeersList();
+      offerPairingForRememberedDevice();
     } catch (_) {}
+  }
+
+  /**
+   * One nudge per page load: if the device you came back for is reachable but the session
+   * is gone, put the pairing sheet up prefilled for it rather than leaving you to discover
+   * which button asks. Cancelling is remembered too - it will not reopen itself.
+   */
+  function offerPairingForRememberedDevice() {
+    const dev = state.targetDevice;
+    if (!dev || !dev.ip || pairing.restoredFor) return;
+    if (peerSessions.has(`${dev.ip}:${dev.port || 8899}`)) return;
+    if (dom.pairSheetOverlay && dom.pairSheetOverlay.classList.contains('open')) return;
+    pairing.restoredFor = dev.id;
+    openPairSheet(dev);
+  }
+
+  /** The poller is the refresh button, so report when it last spoke. */
+  function updatePollStamps() {
+    if (dom.deviceListUpdatedAgo) dom.deviceListUpdatedAgo.textContent = agoText(state.devicesUpdatedAt);
+  }
+
+  function agoText(timestamp) {
+    if (!timestamp) return '等待第一次搜索';
+    const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+    if (seconds < 2) return '刚刚更新';
+    if (seconds < 60) return `${seconds} 秒前更新`;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes} 分钟前更新`;
+  }
+
+  /**
+   * Plot discovered peers on the dial. The bearing is the address (a stable hash, so a
+   * device does not jump between polls) and the radius is how long ago it last answered,
+   * which is the one thing the dial can honestly encode.
+   */
+  function renderRadarBlips() {
+    if (!dom.radarBlips) return;
+    dom.radarBlips.replaceChildren();
+    if (state.devices.length === 0) return;
+
+    const box = 148;
+    const centre = box / 2;
+    state.devices.forEach(dev => {
+      let hash = 0;
+      for (let i = 0; i < dev.ip.length; i++) hash = (hash * 31 + dev.ip.charCodeAt(i)) % 360;
+      const ageSeconds = state.devicesUpdatedAt ? (Date.now() - state.devicesUpdatedAt) / 1000 : 0;
+      const ratio = Math.min(0.86, 0.34 + Math.min(ageSeconds, 12) / 12 * 0.5);
+      const radius = centre * ratio;
+      const dot = document.createElement('span');
+      dot.className = 'radar-blip';
+      const isSelected = state.targetDevice && state.targetDevice.ip === dev.ip;
+      if (isSelected) dot.className += ' selected';
+      dot.style.left = `${(centre + Math.cos(hash * Math.PI / 180) * radius).toFixed(1)}px`;
+      dot.style.top = `${(centre + Math.sin(hash * Math.PI / 180) * radius).toFixed(1)}px`;
+      dot.title = getDeviceDisplayName(dev);
+      dom.radarBlips.appendChild(dot);
+    });
   }
 
   function renderDevicesGrid() {
     if (!dom.devicesGrid) return;
 
+    renderRadarBlips();
+
+    const hintText = document.getElementById('radarHintText');
+    if (hintText) {
+      hintText.textContent = state.devices.length === 0
+        ? '把另一台设备连到同一个 Wi-Fi，或在它上面打开配对码，它就会出现在这里。'
+        : '点一台设备选中它，然后选文件；没选设备时文件存到本机。';
+    }
+
     if (state.devices.length === 0) {
       dom.devicesGrid.innerHTML = `
         <div class="empty-state" style="grid-column: 1/-1;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:42px;height:42px;margin-bottom:8px;opacity:0.5;">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-          </svg>
-          <p>未发现其他局域网节点</p>
-          <span>确保设备接入同一 Wi-Fi 或扫描上方二维码配对</span>
+          <p>还没有别的设备出现</p>
+          <span>把另一台设备连到同一个 Wi-Fi，或在它上面打开配对码。设备互相找不到时，用右上角的配对码扫码直连。</span>
+          <button class="btn btn-secondary btn-sm" data-action="show-my-code">显示我的配对码</button>
         </div>
       `;
+      const codeBtn = dom.devicesGrid.querySelector('[data-action="show-my-code"]');
+      if (codeBtn) codeBtn.addEventListener('click', () => {
+        if (dom.qrModalOverlay) {
+          dom.qrModalOverlay.classList.add('open');
+          renderQrCode();
+        }
+      });
       return;
     }
 
@@ -627,14 +1194,17 @@
       const isPc = dev.os === 'windows' || dev.isHost;
       const isSelectedTarget = state.targetDevice && (state.targetDevice.ip === dev.ip || state.targetDevice.id === dev.id);
       const platformName = isPc ? '电脑端' : '手机端';
-      const fpText = dev.fingerprint ? dev.fingerprint : 'LAN';
+      const paired = peerSessions.has(`${dev.ip}:${dev.port || 8899}`);
+      // The card only renders devices the hub saw in the last few seconds, so a second
+      // "在线" chip would restate the green dot and steal the room the name needs.
+      const fpShort = dev.fingerprint ? String(dev.fingerprint).slice(0, 8) : 'LAN';
 
       return `
-        <div class="device-card ${isSelectedTarget ? 'selected-target' : ''}" data-device-id="${dev.id}">
+        <div class="device-card ${isSelectedTarget ? 'selected-target' : ''}" data-device-id="${escapeHtml(dev.id)}">
           <div class="device-left">
             <div class="device-avatar-wrap">
               <div class="device-avatar ${isPc ? 'pc' : ''}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   ${isPc ? `
                     <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
                     <line x1="8" y1="21" x2="16" y2="21"></line>
@@ -651,33 +1221,25 @@
               <div class="device-name-row">
                 <span class="device-name" title="${escapeHtml(getDeviceDisplayName(dev))}">${escapeHtml(getDeviceDisplayName(dev))}</span>
                 <span class="device-platform-tag ${isPc ? 'pc' : 'mobile'}">${platformName}</span>
-                <span class="device-status-pill online"><span class="pill-dot"></span>在线</span>
               </div>
               <div class="device-meta-row">
-                <span class="device-meta-chip ip-chip" title="IP地址与端口">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                <span class="device-meta-chip ip-chip" title="地址与端口">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
                   ${escapeHtml(dev.ip)}:${escapeHtml(dev.port)}
                 </span>
-                <span class="device-meta-chip fp-chip" title="设备安全指纹">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                  指纹: ${escapeHtml(fpText)}
-                </span>
+                <span class="device-meta-chip fp-chip" title="设备指纹：${escapeHtml(dev.fingerprint || '')}">${escapeHtml(fpShort)}</span>
               </div>
             </div>
           </div>
           <div class="device-actions-group">
-            <button class="btn btn-ghost open-chat-btn" data-device-id="${escapeHtml(dev.id)}" title="进入独立互传会话窗口">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="btn btn-ghost open-chat-btn" data-device-id="${escapeHtml(dev.id)}" title="和这台设备开会话窗口">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               </svg>
               <span>会话</span>
             </button>
-            <button class="btn btn-primary send-to-device-btn ${isSelectedTarget ? 'selected' : ''}" data-device-id="${escapeHtml(dev.id)}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="send-btn-icon">
-                <line x1="22" y1="2" x2="11" y2="13"></line>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-              </svg>
-              <span>${isSelectedTarget ? '已选定 / 投送' : '投送文件'}</span>
+            <button class="btn btn-secondary send-to-device-btn ${isSelectedTarget ? 'is-selected' : ''} ${paired ? '' : 'needs-pairing'}" data-device-id="${escapeHtml(dev.id)}">
+              <span>${paired ? (isSelectedTarget ? '发送到这台' : '发送') : '配对并发送'}</span>
             </button>
           </div>
         </div>
@@ -688,8 +1250,7 @@
     document.querySelectorAll('.open-chat-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const devId = btn.getAttribute('data-device-id');
-        openChatForDevice(devId);
+        openChatForDevice(btn.getAttribute('data-device-id'));
       });
     });
 
@@ -697,13 +1258,7 @@
     document.querySelectorAll('.send-to-device-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const devId = btn.getAttribute('data-device-id');
-        const dev = state.devices.find(d => d.id === devId);
-        if (dev) {
-          state.targetDevice = dev;
-          renderDevicesGrid();
-          showToast(`已选定目标设备: ${dev.name} (${dev.ip}:${dev.port})，请选择要投送的文件`);
-        }
+        selectDevice(btn.getAttribute('data-device-id'));
         dom.filePickerInput.click();
       });
     });
@@ -712,21 +1267,25 @@
     document.querySelectorAll('.device-card').forEach(card => {
       card.addEventListener('click', (e) => {
         if (e.target.closest('.send-to-device-btn') || e.target.closest('.open-chat-btn')) return;
-        const devId = card.getAttribute('data-device-id');
-        const dev = state.devices.find(d => d.id === devId);
-        if (dev) {
-          state.targetDevice = dev;
-          renderDevicesGrid();
-          showToast(`已选定目标设备: ${dev.name} (${dev.ip}:${dev.port})`);
-        }
+        selectDevice(card.getAttribute('data-device-id'));
       });
     });
   }
 
-  // 7. Modern device discovery hub beacon initialization
-  function initRadarCanvas() {
-    // Canvas animation loop removed; replaced with high-performance CSS3 GPU-accelerated discovery beacon
+  /**
+   * Pick the device files go to. Selection is shown by the card itself, so this does not
+   * also raise a toast - the two would say the same thing and one of them is noise.
+   */
+  function selectDevice(devId) {
+    const dev = state.devices.find(d => d.id === devId);
+    if (!dev) return;
+    state.targetDevice = dev;
+    writeStored(RECENT_DEVICE_KEY, dev.id);
+    renderDevicesGrid();
   }
+
+  // 4. (removed) The radar used to run a canvas animation loop; the dial is CSS and the
+  // blips are drawn by renderRadarBlips() from the same data the list uses.
 
   // 8. Drag and drop file picker
   function initDragAndDrop() {
@@ -784,7 +1343,11 @@
     });
 
     switchTab('transfersTab');
-    showToast(`已加入 ${files.length} 个传输任务到并发队列`);
+    if (state.targetDevice) {
+      showToast(`已排进 ${files.length} 个任务，发给 ${getDeviceDisplayName(state.targetDevice)}`, 'progress');
+    } else {
+      showToast(`已排进 ${files.length} 个任务，保存到本机`, 'progress');
+    }
     processTransferQueue();
   }
 
@@ -792,7 +1355,7 @@
   function enqueueTransferTask(file, specificTargetDev = null) {
     const targetDev = specificTargetDev || state.targetDevice;
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    
+
     const taskObj = {
       id: taskId,
       file: file,
@@ -801,10 +1364,12 @@
       totalChunks: Math.max(1, Math.ceil(file.size / UPLOAD_CHUNK_SIZE)),
       currentChunk: 0,
       bytesUploaded: 0,
-      status: 'queued', // queued | transferring | done | failed
+      status: 'queued', // queued | transferring | done | failed | cancelled
       speed: '等待中',
       eta: '',
-      targetName: targetDev ? targetDev.name : '电脑安全沙箱',
+      error: '',
+      nextAction: '',
+      targetName: targetDev ? getDeviceDisplayName(targetDev) : '本机接收目录',
       targetDev: targetDev,
       isOutgoing: !!targetDev,
       startTime: null,
@@ -867,22 +1432,30 @@
       taskObj.originalSize = file.size;
     }
 
-    // Link file transfer into peer chat timeline if targetDev exists
-    let chatFileItem = null;
+    // Link file transfer into peer chat timeline if targetDev exists. A retry reuses the
+    // card that is already in the history instead of stacking a second copy of the same file.
+    let chatFileItem = taskObj.chatItem || null;
     if (targetDev && targetDev.id) {
-      chatFileItem = {
-        id: taskId,
-        type: 'file',
-        direction: 'outgoing',
-        fileName: file.name,
-        fileSize: file.size,
-        status: 'transferring',
-        progress: 0,
-        speed: '0 KB/s',
-        timestamp: Date.now()
-      };
-      if (!state.peerHistories[targetDev.id]) state.peerHistories[targetDev.id] = [];
-      state.peerHistories[targetDev.id].push(chatFileItem);
+      if (!chatFileItem) {
+        chatFileItem = {
+          id: taskId,
+          type: 'file',
+          direction: 'outgoing',
+          fileName: file.name,
+          fileSize: file.size,
+          status: 'transferring',
+          progress: 0,
+          speed: '0 KB/s',
+          timestamp: Date.now()
+        };
+        if (!state.peerHistories[targetDev.id]) state.peerHistories[targetDev.id] = [];
+        state.peerHistories[targetDev.id].push(chatFileItem);
+      } else {
+        chatFileItem.status = 'transferring';
+        chatFileItem.progress = 0;
+        chatFileItem.speed = '0 KB/s';
+      }
+      taskObj.chatItem = chatFileItem;
       saveChatHistories();
       if (state.activeChatPeerId === targetDev.id) {
         renderChatConversation();
@@ -897,12 +1470,11 @@
     // front so every chunk can be sealed with a key the receiver actually holds.
     let targetSession = null;
     if (targetDev && targetDev.ip) {
+      taskObj.speed = '等待配对码';
+      renderTransfersList();
       targetSession = await ensurePeerSession(targetDev);
       if (!targetSession) {
-        taskObj.status = 'failed';
-        taskObj.speed = '未建立加密会话';
-        renderTransfersList();
-        updateTaskBadges();
+        failTask(taskObj, '还没有和这台设备配对，内容没法加密发送。', '输入对方屏幕上显示的配对码，然后点重试。');
         return;
       }
     }
@@ -1016,45 +1588,115 @@
         }
       } catch (err) {
         console.error(err);
-        taskObj.status = 'failed';
-        taskObj.speed = '中断';
-        renderTransfersList();
-        updateTaskBadges();
-        if (chatFileItem) {
-          chatFileItem.status = 'failed';
-          chatFileItem.speed = '中断';
-          saveChatHistories();
-          if (state.activeChatPeerId === targetDev?.id) {
-            renderChatConversation();
-          }
-        }
-        showToast(`文件 "${file.name}" 传输中断: ${err.message}`);
+        failTask(taskObj, uploadFailureText(err), '文件还在原来的位置，没有改动。点重试会从头再传一次。');
         return;
       }
     }
 
+    if (taskObj.status === 'cancelled') {
+      taskObj.speed = '已取消';
+      syncChatTask(taskObj, 'cancelled', '已取消');
+      renderTransfersList();
+      updateTaskBadges();
+      return;
+    }
+
     taskObj.status = 'done';
     taskObj.speed = '传输完成';
+    taskObj.error = '';
+    taskObj.nextAction = '';
     renderTransfersList();
     updateTaskBadges();
-
-    if (chatFileItem) {
-      chatFileItem.status = 'done';
-      chatFileItem.progress = 100;
-      chatFileItem.speed = '已落盘';
-      saveChatHistories();
-      if (state.activeChatPeerId === targetDev?.id) {
-        renderChatConversation();
-      }
-      renderChatPeersList();
-    }
+    syncChatTask(taskObj, 'done', '已保存');
+    renderChatPeersList();
 
     if (targetDev) {
-      showToast(`文件 "${file.name}" 已成功投送到目标设备: ${targetDev.name}！`);
+      showToast(`已把「${file.name}」送到 ${getDeviceDisplayName(targetDev)}`, 'ready');
     } else {
-      showToast(`文件 "${file.name}" 已成功存入电脑安全沙箱！`);
+      showToast(`已保存「${file.name}」`, 'ready');
       fetchFiles();
     }
+  }
+
+  /** Plain wording for the reasons an upload can stop mid-flight. */
+  function uploadFailureText(err) {
+    const raw = String((err && err.message) || err || '');
+    if (raw.indexOf('Failed to fetch') !== -1) return '和本机的传输服务断开了。';
+    if (raw.indexOf('尚未与目标设备建立加密会话') !== -1) return '这台设备还没有配对。';
+    if (raw.indexOf('HTTP') !== -1) return `对方没有收下这个分块（${raw}）。`;
+    return raw ? `传输没有完成：${raw}` : '传输没有完成。';
+  }
+
+  /**
+   * A failed task is not a dead end: it keeps its File handle, so the row can offer a real
+   * retry instead of sending the user back to the file picker.
+   */
+  function failTask(taskObj, message, nextAction) {
+    taskObj.status = 'failed';
+    taskObj.speed = '已中断';
+    taskObj.error = message;
+    taskObj.nextAction = nextAction;
+    renderTransfersList();
+    updateTaskBadges();
+    syncChatTask(taskObj, 'failed', '已中断');
+    showToast(`「${taskObj.fileName}」没有传完`, 'error');
+  }
+
+  function syncChatTask(taskObj, status, speed) {
+    const item = taskObj.chatItem;
+    if (!item) return;
+    item.status = status;
+    item.speed = speed;
+    if (status === 'done') item.progress = 100;
+    saveChatHistories();
+    if (state.activeChatPeerId === (taskObj.targetDev && taskObj.targetDev.id)) {
+      renderChatConversation();
+    }
+  }
+
+  function retryTask(taskId) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    if (task.targetDev && !state.devices.some(d => d.id === task.targetDev.id)) {
+      task.error = '对方已经不在这个网络里了。';
+      task.nextAction = '等它重新出现，或者选一台在线的设备再传。';
+      renderTransfersList();
+      return;
+    }
+
+    task.status = 'queued';
+    task.speed = '等待中';
+    task.error = '';
+    task.nextAction = '';
+    task.bytesUploaded = 0;
+    task.currentChunk = 0;
+    task.eta = '';
+    task.queuePosition = state.transferQueue.length + 1;
+    if (task.chatItem) {
+      task.chatItem.status = 'transferring';
+      task.chatItem.progress = 0;
+      task.chatItem.speed = '0 KB/s';
+    }
+    state.transferQueue.push(task);
+    renderTransfersList();
+    updateTaskBadges();
+    processTransferQueue();
+  }
+
+  function cancelTask(taskId) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    if (task.status === 'queued') {
+      state.transferQueue = state.transferQueue.filter(t => t.id !== taskId);
+      task.speed = '已取消';
+      syncChatTask(task, 'cancelled', '已取消');
+    }
+    // A transfer already in flight is flagged and stops before its next chunk; letting the
+    // current request finish keeps the peer from holding a partial file it never agreed to.
+    task.status = 'cancelled';
+    renderTransfersList();
+    updateTaskBadges();
   }
 
   // Legacy function for chat file transfers - now uses queue system
@@ -1067,53 +1709,87 @@
     if (!dom.transfersList) return;
 
     if (state.tasks.length === 0) {
-      dom.noTransfersEmpty.style.display = 'flex';
+      dom.transfersList.innerHTML = '';
+      if (dom.noTransfersEmpty) dom.noTransfersEmpty.style.display = 'flex';
       return;
     }
 
-    dom.noTransfersEmpty.style.display = 'none';
+    if (dom.noTransfersEmpty) dom.noTransfersEmpty.style.display = 'none';
     dom.transfersList.innerHTML = state.tasks.map(t => {
       const pct = t.fileSize === 0 ? 100 : Math.min(100, Math.round((t.bytesUploaded / t.fileSize) * 100));
       const isDone = t.status === 'done';
       const isFailed = t.status === 'failed';
+      const isCancelled = t.status === 'cancelled';
       const isQueued = t.status === 'queued';
       const isTransferring = t.status === 'transferring';
 
-      // NEW: Display compression and concurrent status
       let statusBadgeText = '';
-      if (isDone) statusBadgeText = '已完成';
-      else if (isFailed) statusBadgeText = '失败';
-      else if (isQueued) statusBadgeText = `队列 #${state.transferQueue.findIndex(task => task.id === t.id) + 1}`;
-      else statusBadgeText = `${pct}%`;
+      let statusClass = 'status-transferring';
+      if (isDone) { statusBadgeText = '已完成'; statusClass = 'status-done'; }
+      else if (isFailed) { statusBadgeText = '失败'; statusClass = 'status-failed'; }
+      else if (isCancelled) { statusBadgeText = '已取消'; statusClass = 'status-queued'; }
+      else if (isQueued) {
+        const position = state.transferQueue.findIndex(task => task.id === t.id);
+        statusBadgeText = position >= 0 ? `排队 ${position + 1}` : '排队中';
+        statusClass = 'status-queued';
+      } else { statusBadgeText = `${pct}%`; }
 
-      const compressionBadge = t.compressionEnabled ? `<span style="font-size:10px;color:var(--success);margin-left:4px;padding:2px 6px;background:var(--success-bg);border-radius:4px;">压缩</span>` : '';
+      const fillState = isDone ? 'is-done' : ((isFailed || isCancelled) ? 'is-failed' : '');
+      const compressionNote = t.compressionEnabled
+        ? `<span class="compression-note">文本已压缩</span>`
+        : '';
+
+      // A failed row is the one place the app must not just report: it says what to do
+      // next and offers the two actions that actually exist.
+      let foot = '';
+      if (isFailed) {
+        foot = `
+          <p class="transfer-error"><span>${escapeHtml(t.error || '传输没有完成。')}</span></p>
+          ${t.nextAction ? `<p class="transfer-error"><span class="field-error-hint">${escapeHtml(t.nextAction)}</span></p>` : ''}
+          <div class="transfer-actions">
+            <button class="btn btn-primary btn-sm retry-task-btn" data-task-id="${escapeHtml(t.id)}">重试</button>
+            <button class="btn btn-ghost btn-sm cancel-task-btn" data-task-id="${escapeHtml(t.id)}">取消</button>
+          </div>
+        `;
+      } else if (isTransferring || isQueued) {
+        foot = `
+          <div class="transfer-actions">
+            <button class="btn btn-ghost btn-sm cancel-task-btn" data-task-id="${escapeHtml(t.id)}">取消</button>
+          </div>
+        `;
+      }
 
       return `
-        <div class="transfer-item ${isTransferring ? 'active-transfer' : ''}">
+        <div class="transfer-item ${isFailed ? 'status-failed-row' : ''}">
           <div class="transfer-head">
             <span class="transfer-file-title">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
                 <polyline points="13 2 13 9 20 9"></polyline>
               </svg>
-              <span>${escapeHtml(t.fileName)}</span>
-              ${t.targetName ? `<span style="font-size:11px;color:var(--accent);margin-left:6px;font-weight:600;">[${escapeHtml(t.targetName)}]</span>` : ''}
-              ${compressionBadge}
+              <span title="${escapeHtml(t.fileName)}">${escapeHtml(t.fileName)}</span>
+              <span class="transfer-target-name">到 ${escapeHtml(t.targetName || '本机')}</span>
             </span>
-            <span class="transfer-status-badge ${isDone ? 'status-done' : (isFailed ? 'status-failed' : (isQueued ? 'status-queued' : 'status-transferring'))}">
-              ${statusBadgeText}
-            </span>
+            <span class="transfer-status-badge ${statusClass}">${statusBadgeText}</span>
           </div>
           <div class="progress-track">
-            <div class="progress-fill ${isTransferring ? 'active' : ''}" style="width: ${pct}%;"></div>
+            <div class="progress-fill ${fillState}" style="width: ${pct}%;"></div>
           </div>
           <div class="transfer-foot">
-            <span>${formatBytes(t.bytesUploaded)} / ${formatBytes(t.fileSize)} (${t.currentChunk}/${t.totalChunks} 块)</span>
-            <span>${escapeHtml(t.speed || '')}${t.eta ? ' · ' + escapeHtml(t.eta) : ''}</span>
+            <span>${formatBytes(t.bytesUploaded)} / ${formatBytes(t.fileSize)} · ${t.currentChunk}/${t.totalChunks} 块</span>
+            <span>${escapeHtml(t.speed || '')}${t.eta ? ' · ' + escapeHtml(t.eta) : ''}${compressionNote}</span>
           </div>
+          ${foot}
         </div>
       `;
     }).join('');
+
+    dom.transfersList.querySelectorAll('.retry-task-btn').forEach(btn => {
+      btn.addEventListener('click', () => retryTask(btn.getAttribute('data-task-id')));
+    });
+    dom.transfersList.querySelectorAll('.cancel-task-btn').forEach(btn => {
+      btn.addEventListener('click', () => cancelTask(btn.getAttribute('data-task-id')));
+    });
   }
 
   function updateTaskBadges() {
@@ -1147,7 +1823,8 @@
     if (dom.chatAttachBtn) {
       dom.chatAttachBtn.addEventListener('click', () => {
         if (!state.activeChatPeerId) {
-          showToast('请先选择对端设备开启会话');
+          showToast('先选一台设备');
+          switchTab('radarTab');
           return;
         }
         if (dom.chatFileInput) dom.chatFileInput.click();
@@ -1156,7 +1833,8 @@
     if (dom.chatQuickSendBtn) {
       dom.chatQuickSendBtn.addEventListener('click', () => {
         if (!state.activeChatPeerId) {
-          showToast('请先选择对端设备开启会话');
+          showToast('先选一台设备');
+          switchTab('radarTab');
           return;
         }
         if (dom.chatFileInput) dom.chatFileInput.click();
@@ -1170,7 +1848,7 @@
         if (files.length === 0) return;
         const targetDev = state.devices.find(d => d.id === state.activeChatPeerId);
         if (!targetDev) {
-          showToast('目标设备已离线，无法投送');
+          showToast('这台设备已经不在这个网络里了', 'error');
           return;
         }
         for (const f of files) {
@@ -1184,11 +1862,11 @@
     if (dom.chatClearHistoryBtn) {
       dom.chatClearHistoryBtn.addEventListener('click', () => {
         if (!state.activeChatPeerId) return;
-        if (confirm('确认清空此设备的互传与会话记录？')) {
+        if (confirm('清空这台设备的文件和消息记录？文件本身不会被删除。')) {
           delete state.peerHistories[state.activeChatPeerId];
           saveChatHistories();
           renderChatConversation();
-          showToast('已清空当前会话记录');
+          renderChatPeersList();
         }
       });
     }
@@ -1219,12 +1897,12 @@
         e.stopPropagation();
         dom.chatDropOverlay.classList.remove('visible');
         if (!state.activeChatPeerId) {
-          showToast('请先选择对端设备');
+          showToast('先选一台设备');
           return;
         }
         const targetDev = state.devices.find(d => d.id === state.activeChatPeerId);
         if (!targetDev) {
-          showToast('目标设备已离线');
+          showToast('这台设备已经不在这个网络里了', 'error');
           return;
         }
         const files = Array.from(e.dataTransfer.files || []);
@@ -1302,9 +1980,9 @@
       const copyBtn = menu.querySelector('#menuCopyBtn');
       copyBtn.addEventListener('click', () => {
         navigator.clipboard.writeText(textToCopy).then(() => {
-          showToast(`已复制文本: "${textToCopy.length > 25 ? textToCopy.slice(0, 25) + '...' : textToCopy}"`);
+          showToast('已复制', 'ready');
         }).catch(() => {
-          showToast('复制成功');
+          showToast('浏览器不允许复制，文本已经帮你选中了', 'attention');
         });
         removeContextMenu();
       });
@@ -1401,6 +2079,7 @@
     const targetDev = state.devices.find(d => d.id === devId);
     if (targetDev) {
       state.targetDevice = targetDev;
+      writeStored(RECENT_DEVICE_KEY, targetDev.id);
     }
     renderChatPeersList();
     renderChatConversation();
@@ -1419,12 +2098,8 @@
     if (state.devices.length === 0) {
       dom.chatPeersList.innerHTML = `
         <div class="chat-peer-empty" id="chatNoPeersHint">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m5.66 2.83a2 2 0 0 1 0 2.83"></path>
-          </svg>
-          <p>暂无互联设备</p>
-          <span>请在“设备发现”页点击“进入会话”或等待手机上线</span>
+          <p>还没有可聊天的设备</p>
+          <span>把另一台设备连到同一个 Wi-Fi，它会自己出现在这里。</span>
         </div>
       `;
       if (state.activeChatPeerId) {
@@ -1437,12 +2112,13 @@
     dom.chatPeersList.innerHTML = state.devices.map(dev => {
       const isPc = dev.os === 'windows' || dev.isHost;
       const isActive = dev.id === state.activeChatPeerId;
+      const paired = peerSessions.has(`${dev.ip}:${dev.port || 8899}`);
       const history = state.peerHistories[dev.id] || [];
       const lastItem = history[history.length - 1];
-      let lastText = '暂无互传记录';
+      let lastText = '还没有互传记录';
       if (lastItem) {
         if (lastItem.type === 'file') {
-          lastText = `[文件] ${lastItem.fileName}`;
+          lastText = `文件 ${lastItem.fileName}`;
         } else {
           lastText = lastItem.text || '';
         }
@@ -1451,7 +2127,7 @@
       return `
         <div class="chat-peer-item ${isActive ? 'active' : ''}" data-peer-id="${escapeHtml(dev.id)}">
           <div class="chat-peer-avatar ${isPc ? 'pc' : 'mobile'}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               ${isPc ? `
                 <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
                 <line x1="8" y1="21" x2="16" y2="21"></line>
@@ -1461,12 +2137,12 @@
                 <line x1="12" y1="18" x2="12.01" y2="18"></line>
               `}
             </svg>
-            <span class="chat-peer-status-dot online"></span>
+            <span class="chat-peer-status-dot ${paired ? 'online' : 'offline'}" title="${paired ? '已配对' : '未配对'}"></span>
           </div>
           <div class="chat-peer-info">
             <div class="chat-peer-name-row">
-              <span class="chat-peer-name">${escapeHtml(dev.name)}</span>
-              <span class="device-platform-tag ${isPc ? 'pc' : 'mobile'}" style="font-size:10px;padding:1px 5px;">${isPc ? 'PC' : '手机'}</span>
+              <span class="chat-peer-name">${escapeHtml(getDeviceDisplayName(dev))}</span>
+              <span class="device-platform-tag ${isPc ? 'pc' : 'mobile'}">${isPc ? '电脑' : '手机'}</span>
             </div>
             <div class="chat-peer-preview">${escapeHtml(lastText)}</div>
           </div>
@@ -1501,13 +2177,19 @@
 
     // Update peer header
     const isPc = dev.os === 'windows' || dev.isHost;
-    if (dom.chatActiveName) dom.chatActiveName.textContent = dev.name;
+    const paired = peerSessions.has(`${dev.ip}:${dev.port || 8899}`);
+    if (dom.chatActiveName) dom.chatActiveName.textContent = getDeviceDisplayName(dev);
     if (dom.chatActiveTag) {
       dom.chatActiveTag.className = `device-platform-tag ${isPc ? 'pc' : 'mobile'}`;
       dom.chatActiveTag.textContent = isPc ? '电脑端' : '手机端';
     }
+    if (dom.chatSecurityTagText) dom.chatSecurityTagText.textContent = paired ? '已配对' : '未配对';
+    if (dom.chatSecurityTag) {
+      dom.chatSecurityTag.style.background = paired ? 'var(--state-ready-bg)' : 'var(--state-attention-bg)';
+      dom.chatSecurityTag.style.color = paired ? 'var(--state-ready)' : 'var(--state-attention)';
+    }
     if (dom.chatActiveMeta) {
-      dom.chatActiveMeta.textContent = `IP: ${dev.ip}:${dev.port} | 指纹: ${dev.fingerprint || 'LAN'}`;
+      dom.chatActiveMeta.textContent = `${dev.ip}:${dev.port} · ${dev.fingerprint || 'LAN'}`;
     }
 
     // Render timeline
@@ -1516,11 +2198,8 @@
     if (history.length === 0) {
       dom.chatTimeline.innerHTML = `
         <div class="chat-timeline-empty">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
-          <p>已与 ${escapeHtml(dev.name)} 建立局域网连接</p>
-          <span>可在此窗口直接拖入文件投送，或在下方输入消息</span>
+          <p>已经连上 ${escapeHtml(getDeviceDisplayName(dev))}</p>
+          <span>把文件拖进这个窗口就能发，也可以在下面打字。第一次发之前需要先输入对方的配对码。</span>
         </div>
       `;
       return;
@@ -1533,12 +2212,15 @@
       if (item.type === 'file') {
         const isDone = item.status === 'done';
         const isFailed = item.status === 'failed';
+        const isCancelled = item.status === 'cancelled';
         const pct = item.progress !== undefined ? item.progress : (isDone ? 100 : 0);
+        const stateClass = isDone ? 'done' : (isFailed || isCancelled ? 'failed' : 'transferring');
+        const stateText = isDone ? '已送达' : (isCancelled ? '已取消' : (isFailed ? '没传完' : `${pct}%`));
         return `
           <div class="chat-file-card ${isOutgoing ? 'outgoing' : 'incoming'}" data-task-id="${escapeHtml(item.id)}">
             <div class="chat-file-header">
               <div class="chat-file-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
                   <polyline points="13 2 13 9 20 9"></polyline>
                 </svg>
@@ -1547,21 +2229,19 @@
                 <div class="chat-file-name" title="${escapeHtml(item.fileName)}">${escapeHtml(item.fileName)}</div>
                 <div class="chat-file-meta">
                   <span>${formatBytes(item.fileSize)}</span>
-                  <span>•</span>
-                  <span>${isOutgoing ? '投送至对端' : '来自对端'}</span>
+                  <span>·</span>
+                  <span>${isOutgoing ? '发给对方' : '对方发来'}</span>
                 </div>
               </div>
-              <span class="chat-file-status-tag ${isDone ? 'done' : (isFailed ? 'failed' : 'transferring')}">
-                ${isDone ? '传输完成' : (isFailed ? '中断' : `${pct}%`)}
-              </span>
+              <span class="chat-file-status-tag ${stateClass}">${stateText}</span>
             </div>
-            ${!isDone && !isFailed ? `
+            ${!isDone && !isFailed && !isCancelled ? `
               <div class="chat-file-progress-track">
                 <div class="chat-file-progress-fill" style="width: ${pct}%;"></div>
               </div>
             ` : ''}
             <div class="chat-file-footer">
-              <span>${escapeHtml(item.speed || (isDone ? '已落盘' : ''))}</span>
+              <span>${escapeHtml(item.speed || '')}</span>
               <span class="chat-bubble-time">${timeStr}</span>
             </div>
           </div>
@@ -1588,13 +2268,13 @@
     if (!text) return;
 
     if (!state.activeChatPeerId) {
-      showToast('请先选择对端设备');
+      showToast('先选一台设备');
       return;
     }
 
     const targetDev = state.devices.find(d => d.id === state.activeChatPeerId);
     if (!targetDev) {
-      showToast('目标设备已离线');
+      showToast('这台设备已经不在这个网络里了', 'error');
       return;
     }
 
@@ -1628,7 +2308,7 @@
           peerName: targetDev.name,
           senderIp: state.info?.localIp || '',
           senderId: state.info?.host?.id || 'pc-hub',
-          senderName: state.info?.host?.name || '纸鸢 (Desktop Hub)'
+          senderName: state.info?.host?.name || '本机'
         })
       });
       // The bubble was rendered optimistically. Opening this page by LAN address instead of
@@ -1639,7 +2319,7 @@
         saveChatHistories();
         renderChatConversation();
         renderChatPeersList();
-        showToast(`消息未送达：${(await res.json().catch(() => ({}))).error || res.status}`, 'error');
+        showToast('这条消息没有送出去，对方可能还没配对。', 'error');
       }
     } catch (e) {
       console.warn('Message send failed:', e);
@@ -1788,13 +2468,14 @@
     } catch (_) {}
   }
 
-  // 10. File vault listing and download
+  // 10. Received files listing and download
   async function fetchFiles() {
     try {
       const res = await fetch(apiUrl('/api/v1/files/list'));
       const data = await res.json();
+      state.filesUpdatedAt = Date.now();
       if (data.downloadDir) {
-        if (dom.sandboxDirText) dom.sandboxDirText.textContent = `落盘沙箱路径: ${data.downloadDir}`;
+        if (dom.sandboxDirText) dom.sandboxDirText.textContent = data.downloadDir;
         if (dom.settingsDirDisplay) dom.settingsDirDisplay.textContent = data.downloadDir;
       }
       renderFilesList(data.files || []);
@@ -1807,10 +2488,13 @@
     if (files.length === 0) {
       dom.filesList.innerHTML = `
         <div class="empty-state">
-          <p>保险箱中暂无文件</p>
-          <span>从手机或电脑投送的文件将安全保存在此</span>
+          <p>还没有收到文件</p>
+          <span>对方选这台电脑发出文件后，收到的东西会出现在这里。</span>
+          <button class="btn btn-secondary btn-sm" data-action="open-dir">打开保存文件夹</button>
         </div>
       `;
+      const openBtn = dom.filesList.querySelector('[data-action="open-dir"]');
+      if (openBtn) openBtn.addEventListener('click', () => openStorageDir());
       return;
     }
 
@@ -1820,23 +2504,31 @@
         <div class="file-item">
           <div class="file-head">
             <span class="transfer-file-title">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
               </svg>
-              <span>${escapeHtml(f.name)}</span>
+              <span title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
             </span>
             <a href="${downloadHref}" download class="btn btn-secondary btn-sm">
-              下载
+              另存一份
             </a>
           </div>
           <div class="transfer-foot">
-            <span>大小: ${formatBytes(f.size)}</span>
-            <span>修改时间: ${new Date(f.mtime).toLocaleString()}</span>
+            <span>${formatBytes(f.size)}</span>
+            <span>${escapeHtml(formatTimestamp(f.mtime))}</span>
           </div>
         </div>
       `;
     }).join('');
+  }
+
+  function formatTimestamp(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    const pad = n => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
 
   // 11. Render ISO/IEC 18004 Standard QR Code (uses qrcode.js engine)
@@ -1861,22 +2553,22 @@
       // Enhanced validation: check if qrcode.js is loaded and functional
       if (typeof window.qrcode !== 'function') {
         console.error('QR code generator (qrcode.js) not loaded. Ensure <script src="qrcode.js"> is present in HTML.');
-        showToast('二维码生成器未加载，请刷新页面重试', 'error');
+        showToast('二维码没有画出来，可以直接输入配对码', 'error');
         
         // Fallback: display text-only pairing information
         const ctx = canvas.getContext('2d');
         if (ctx) {
           canvas.width = 220;
           canvas.height = 220;
-          ctx.fillStyle = '#f8f9fa';
+          ctx.fillStyle = '#FFFFFF';
           ctx.fillRect(0, 0, 220, 220);
-          ctx.fillStyle = '#dc2626';
-          ctx.font = 'bold 14px sans-serif';
+          ctx.fillStyle = '#16181B';
+          ctx.font = 'bold 14px system-ui, sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText('QR 生成失败', 110, 100);
-          ctx.font = '11px sans-serif';
-          ctx.fillStyle = '#64748b';
-          ctx.fillText('请手动输入 PIN 码配对', 110, 130);
+          ctx.fillText('二维码没有画出来', 110, 100);
+          ctx.font = '11px system-ui, sans-serif';
+          ctx.fillStyle = '#4A5158';
+          ctx.fillText('改用下面的配对码', 110, 122);
         }
         return;
       }
@@ -1916,8 +2608,9 @@
         }
       }
 
-      // Micro center anchor dot badge (compact 3x3 modules to preserve error-correction margin)
-      const isEyecare = document.body.classList.contains('eyecare-theme');
+      // Micro center anchor dot badge (compact 3x3 modules to preserve error-correction margin).
+      // Neutral ink: the QR has to stay scannable, and a coloured badge is decoration that
+      // costs contrast.
       const badgeModules = 3;
       const badgeSize = cellSize * badgeModules;
       const bx = (displaySize - badgeSize) / 2;
@@ -1926,7 +2619,7 @@
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(bx - 1.5, by - 1.5, badgeSize + 3, badgeSize + 3);
 
-      ctx.fillStyle = isEyecare ? '#2E7D56' : '#2563EB';
+      ctx.fillStyle = '#16181B';
       ctx.beginPath();
       ctx.roundRect(bx, by, badgeSize, badgeSize, 2);
       ctx.fill();
@@ -1962,9 +2655,9 @@
       const textToCopy = dom.modalDirectUrl ? dom.modalDirectUrl.textContent : '';
       if (textToCopy) {
         navigator.clipboard.writeText(textToCopy).then(() => {
-          showToast('配对地址已成功复制到剪贴板！');
+          showToast('配对地址已复制', 'ready');
         }).catch(() => {
-          showToast(`地址: ${textToCopy}`);
+          showToast('浏览器不允许复制，请手动选中地址', 'attention');
         });
       }
     });
@@ -1976,7 +2669,6 @@
         dom.qrModeAppBtn.classList.add('active');
         dom.qrModeWebBtn.classList.remove('active');
         renderQrCode();
-        showToast('已切换为 SafeDrop App 专享协议二维码');
       });
 
       dom.qrModeWebBtn.addEventListener('click', () => {
@@ -1984,7 +2676,6 @@
         dom.qrModeWebBtn.classList.add('active');
         dom.qrModeAppBtn.classList.remove('active');
         renderQrCode();
-        showToast('已切换为通用手机相机/网页直连二维码');
       });
     }
 
@@ -1995,15 +2686,9 @@
       });
     }
 
-    dom.refreshDevicesBtn.addEventListener('click', () => {
-      fetchDevices();
-      showToast('正在主动探活局域网设备...');
-    });
-
-    dom.refreshFilesBtn.addEventListener('click', () => {
-      fetchFiles();
-      showToast('文件列表已刷新');
-    });
+    // There is no manual device refresh: fetchDevices() runs on a timer and the panel
+    // shows when it last answered. A button that only re-runs a poller is a second control
+    // for something already happening.
 
     if (dom.openDirFromFilesBtn) {
       dom.openDirFromFilesBtn.addEventListener('click', () => {
@@ -2011,11 +2696,19 @@
       });
     }
 
+    if (dom.noTransfersPickBtn) {
+      dom.noTransfersPickBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dom.filePickerInput.click();
+      });
+    }
+
+    // "清除已结束" drops everything that has reached a final state, including failures:
+    // a failed row keeps its file handle only while it is on the list.
     dom.clearCompletedTasksBtn.addEventListener('click', () => {
-      state.tasks = state.tasks.filter(t => t.status === 'transferring');
+      state.tasks = state.tasks.filter(t => t.status === 'transferring' || t.status === 'queued');
       updateTaskBadges();
       renderTransfersList();
-      showToast('已清理已完成任务');
     });
 
     dom.refreshPinBtn.addEventListener('click', () => {
@@ -2023,7 +2716,7 @@
     });
   }
 
-  // 13. Vault storage settings management
+  // 13. Storage settings management
   function initSettingsEvents() {
     // NEW: Compression toggle event listener
     const compressionToggle = document.getElementById('compressionToggle');
@@ -2034,37 +2727,17 @@
         try {
           localStorage.setItem('safedrop_compression_enabled', state.compressionEnabled ? 'true' : 'false');
         } catch (_) {}
-        showToast(state.compressionEnabled ? '智能压缩传输已启用' : '智能压缩传输已关闭');
       });
     }
 
     if (dom.saveDownloadDirBtn && dom.customDownloadDirInput) {
-      dom.saveDownloadDirBtn.addEventListener('click', async () => {
+      dom.saveDownloadDirBtn.addEventListener('click', () => {
         const newDir = dom.customDownloadDirInput.value.trim();
         if (!newDir) {
-          showToast('请输入有效的目录路径');
+          showToast('先填一个完整的文件夹路径');
           return;
         }
-        try {
-          const res = await fetch(apiUrl('/api/v1/settings/dir'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dir: newDir })
-          });
-          const data = await res.json();
-          if (res.ok && data.code === 0) {
-            if (state.info) state.info.downloadDir = data.downloadDir;
-            if (dom.settingsDirDisplay) dom.settingsDirDisplay.textContent = data.downloadDir;
-            if (dom.sandboxDirText) dom.sandboxDirText.textContent = `落盘沙箱路径: ${data.downloadDir}`;
-            dom.customDownloadDirInput.value = data.downloadDir;
-            showToast('文件储存目录已成功更新！');
-            fetchFiles();
-          } else {
-            showToast(data.error || '保存目录失败');
-          }
-        } catch (e) {
-          showToast(`更新目录失败: ${e.message}`);
-        }
+        applyStorageDir(newDir);
       });
     }
 
@@ -2074,39 +2747,79 @@
       });
     }
 
-    // Preset shortcut chips
+    // Preset chips. They used to paste a path into the text box and leave the user to
+    // notice that nothing had been saved; now one press is the whole action.
     document.querySelectorAll('.preset-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         const presetType = chip.getAttribute('data-path');
-        const currentPath = dom.customDownloadDirInput ? dom.customDownloadDirInput.value : '';
-        let targetPath = '';
-
-        // Derive user home directory from current path
-        const userHomeMatch = currentPath.match(/^([A-Za-z]:\\[Uu]sers\\[^\\]+)/);
-        const home = userHomeMatch ? userHomeMatch[1] : 'C:\\SafeDrop';
-
-        if (presetType === 'downloads') {
-          targetPath = `${home}\\Downloads\\SafeDrop`;
-        } else if (presetType === 'documents') {
-          targetPath = `${home}\\Documents\\SafeDrop`;
-        } else if (presetType === 'desktop') {
-          targetPath = `${home}\\Desktop\\SafeDrop`;
-        }
-
-        if (dom.customDownloadDirInput && targetPath) {
-          dom.customDownloadDirInput.value = targetPath;
-          showToast(`已填入预设路径: ${presetType}`);
-        }
+        const targetPath = presetPathFor(presetType);
+        if (!targetPath) return;
+        if (dom.customDownloadDirInput) dom.customDownloadDirInput.value = targetPath;
+        applyStorageDir(targetPath, chip);
       });
+    });
+
+    markActivePreset();
+  }
+
+  /**
+   * Resolve a preset name to an absolute path. There is no native folder picker available
+   * to this page (the Tauri dialog plugin is not configured), so the text field stays as
+   * the advanced route; the presets cover the three places people actually mean.
+   */
+  function presetPathFor(presetType) {
+    const currentPath = (state.info && state.info.downloadDir) || (dom.customDownloadDirInput ? dom.customDownloadDirInput.value : '');
+    const userHomeMatch = String(currentPath).match(/^([A-Za-z]:\\[Uu]sers\\[^\\]+)/i);
+    const home = userHomeMatch ? userHomeMatch[1] : 'C:\\SafeDrop';
+    const leaf = { downloads: 'Downloads', documents: 'Documents', desktop: 'Desktop' }[presetType];
+    if (!leaf) return '';
+    return `${home}\\${leaf}\\SafeDrop`;
+  }
+
+  async function applyStorageDir(newDir, sourceChip) {
+    try {
+      const res = await fetch(apiUrl('/api/v1/settings/dir'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir: newDir })
+      });
+      const data = await res.json();
+      if (res.ok && data.code === 0) {
+        if (state.info) state.info.downloadDir = data.downloadDir;
+        if (dom.settingsDirDisplay) dom.settingsDirDisplay.textContent = data.downloadDir;
+        if (dom.sandboxDirText) dom.sandboxDirText.textContent = data.downloadDir;
+        if (dom.customDownloadDirInput) dom.customDownloadDirInput.value = data.downloadDir;
+        markActivePreset(sourceChip);
+        showToast('保存位置已更新', 'ready');
+        fetchFiles();
+        return;
+      }
+      showToast(data.error || '这个路径用不了，换一个试试', 'error');
+    } catch (e) {
+      showToast('保存位置没有改成：本机的传输服务没有响应。', 'error');
+    }
+  }
+
+  /** Show which preset is the current one, so "applied" is visible without a toast. */
+  function markActivePreset(justApplied) {
+    const current = String((state.info && state.info.downloadDir) || '').replace(/[\\/]+$/, '').toLowerCase();
+    document.querySelectorAll('.preset-chip').forEach(chip => {
+      const want = String(presetPathFor(chip.getAttribute('data-path')) || '').replace(/[\\/]+$/, '').toLowerCase();
+      const on = chip === justApplied || (!!want && want === current);
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
   }
 
   async function openStorageDir() {
     try {
-      await fetch(apiUrl('/api/v1/settings/open-dir'), { method: 'POST' });
-      showToast('已在系统文件资源管理器中打开沙箱目录');
+      const res = await fetch(apiUrl('/api/v1/settings/open-dir'), { method: 'POST' });
+      if (!res.ok) {
+        showToast('打不开这个文件夹，可能路径已经不在了', 'error');
+        return;
+      }
+      showToast('已在文件资源管理器中打开', 'ready');
     } catch (e) {
-      showToast('打开目录失败');
+      showToast('打不开这个文件夹', 'error');
     }
   }
 
@@ -2156,7 +2869,7 @@
       });
       
       if (deviceMap.size === 0) {
-        container.innerHTML = '<div class="device-name-empty">暂无已连接设备</div>';
+        container.innerHTML = '<div class="device-name-empty">还没有连过的设备。连上一次之后，就能在这里给它起名字。</div>';
         return;
       }
       
@@ -2164,15 +2877,24 @@
         <div class="device-name-card">
           <div class="device-name-header">
             <div class="device-name-icon ${dev.os === 'android' ? 'android' : 'pc'}">
-              ${dev.os === 'android' ? '📱' : '💻'}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                ${dev.os === 'android' ? `
+                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                  <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                ` : `
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                `}
+              </svg>
             </div>
             <div class="device-name-info">
               <div class="device-name-title">${escapeHtml(dev.name)}</div>
-              <div class="device-name-meta">指纹: ${escapeHtml(dev.fingerprint.substring(0, 12))}... · ${dev.status === 'online' ? '<span style="color: var(--success);">在线</span>' : '<span style="color: var(--text-muted);">离线</span>'}</div>
+              <div class="device-name-meta">${escapeHtml(dev.fingerprint.substring(0, 12))} · ${dev.status === 'online' ? '在线' : '不在这个网络里'}</div>
             </div>
           </div>
           <div class="device-name-controls">
-            <input type="text" class="device-name-input" placeholder="设置自定义名称..." value="${escapeHtml(dev.customName)}" data-fingerprint="${escapeHtml(dev.fingerprint)}"/>
+            <input type="text" class="device-name-input" placeholder="起个名字" value="${escapeHtml(dev.customName)}" data-fingerprint="${escapeHtml(dev.fingerprint)}" aria-label="设备名称"/>
             <button class="btn btn-primary btn-sm save-device-name" data-fingerprint="${escapeHtml(dev.fingerprint)}">保存</button>
             ${dev.customName ? `<button class="btn btn-secondary btn-sm delete-device-name" data-fingerprint="${escapeHtml(dev.fingerprint)}">删除</button>` : ''}
           </div>
@@ -2184,7 +2906,7 @@
           const fingerprint = e.target.dataset.fingerprint;
           const input = container.querySelector(`.device-name-input[data-fingerprint="${fingerprint}"]`);
           const customName = input?.value.trim();
-          if (!customName) return showToast('请输入自定义名称');
+          if (!customName) return showToast('先写一个名字');
           try {
             const res = await fetch(apiUrl(`/api/v1/devices/names/${fingerprint}`), {
               method: 'PUT',
@@ -2192,51 +2914,57 @@
               body: JSON.stringify({ customName })
             });
             if (res.ok) {
-              showToast('设备名称已保存');
+              showToast('名字已保存', 'ready');
               loadDeviceNamesManager();
               fetchDevices();
             } else {
               const data = await res.json();
-              showToast(data.error || '保存失败');
+              showToast(data.error || '名字没保存上', 'error');
             }
-          } catch (_) { showToast('保存失败'); }
+          } catch (_) { showToast('名字没保存上', 'error'); }
         });
       });
       
       container.querySelectorAll('.delete-device-name').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           const fingerprint = e.target.dataset.fingerprint;
-          if (!confirm('确定要删除此设备的自定义名称吗？')) return;
+          if (!confirm('删掉这台设备的自定义名字？')) return;
           try {
             const res = await fetch(apiUrl(`/api/v1/devices/names/${fingerprint}`), { method: 'DELETE' });
             if (res.ok) {
-              showToast('设备名称已删除');
+              showToast('名字已删除', 'ready');
               loadDeviceNamesManager();
               fetchDevices();
             } else {
               const data = await res.json();
-              showToast(data.error || '删除失败');
+              showToast(data.error || '名字没删掉', 'error');
             }
-          } catch (_) { showToast('删除失败'); }
+          } catch (_) { showToast('名字没删掉', 'error'); }
         });
       });
     } catch (err) {
       console.error('Failed to load device names:', err);
-      container.innerHTML = '<div class="device-name-empty" style="color: var(--danger);">加载设备列表失败</div>';
+      container.innerHTML = '<div class="device-name-empty">读不到设备列表，稍后再试。</div>';
     }
   }
 
-  // Toast notifications
-  function showToast(msg) {
+  // Toast notifications. `kind` maps onto the same semantic states the rest of the
+  // panel uses; pairing errors never come through here - they land next to the field.
+  function showToast(msg, kind) {
+    if (!dom.toastContainer) return;
     const toast = document.createElement('div');
     toast.className = 'toast';
+    if (kind === 'ready' || kind === 'success') toast.className += ' is-ready';
+    else if (kind === 'progress') toast.className += ' is-progress';
+    else if (kind === 'attention' || kind === 'warning') toast.className += ' is-attention';
+    else if (kind === 'error' || kind === 'failed') toast.className += ' is-error';
     toast.textContent = msg;
     dom.toastContainer.appendChild(toast);
 
     setTimeout(() => {
       toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.3s ease';
-      setTimeout(() => toast.remove(), 300);
+      toast.style.transition = 'opacity 0.2s linear';
+      setTimeout(() => toast.remove(), 220);
     }, 3200);
   }
 

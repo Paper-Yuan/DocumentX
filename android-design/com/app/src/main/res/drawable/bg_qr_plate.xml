@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static white plate under a QR code: contrast for the scanner, not a theme surface. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_large" />
+    <solid android:color="#FFFFFF" />
+    <stroke
+        android:width="@dimen/hairline_width"
+        android:color="#24272B" />
+</shape>

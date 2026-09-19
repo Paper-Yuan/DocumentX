@@ -1,41 +1,194 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Default strings. The product speaks Chinese on both ends, so the default locale is Chinese too:
+  leaving English here meant a zh device that missed values-zh showed a different app.
+  values-zh and values-zh-rCN must carry the same keys with the same meaning.
+
+  Copy rules: plain Chinese, active voice, name things by what the user controls
+  ("配对码", "已接收文件", "发送到这台电脑") - not by how the code implements them.
+-->
 <resources>
     <string name="app_name">SafeDrop</string>
-    <string name="app_subtitle">Local Network File Transfer</string>
+    <string name="app_subtitle">局域网文件传输</string>
 
     <!-- Navigation -->
-    <string name="nav_radar">Radar</string>
-    <string name="nav_transfer">Transfers</string>
-    <string name="nav_vault">Vault</string>
-    <string name="nav_settings">Settings</string>
+    <string name="nav_radar">设备</string>
+    <string name="nav_transfer">传输</string>
+    <string name="nav_vault">已接收</string>
+    <string name="nav_settings">设置</string>
 
-    <!-- Scanner & Pairing -->
-    <string name="action_scan">Scan QR</string>
-    <string name="scan_hint">Point camera at SafeDrop QR code on PC screen</string>
-    <string name="scan_success">Scanned successfully, establishing connection...</string>
-    <string name="pairing_title">Out-of-Band Pairing</string>
-    <string name="pairing_pin_hint">Enter 6-digit dynamic PIN from PC</string>
+    <!-- Scanner &amp; Pairing -->
+    <string name="action_scan">扫码配对</string>
+    <string name="scan_hint">对准对方屏幕上的配对码</string>
+    <string name="scan_success">配对码读取成功</string>
+    <string name="scan_result_incomplete">这个码里没有完整的配对信息，请对准对方当前显示的配对码</string>
+    <string name="scan_result_unreadable">这个码读不出来，请对准对方当前显示的配对码</string>
+    <string name="scan_not_pair_code">这不是 SafeDrop 的配对码</string>
 
-    <!-- Radar & Discovery -->
-    <string name="radar_title">Local Device Radar</string>
-    <string name="radar_scanning">Scanning for online Desktop Hubs...</string>
-    <string name="no_devices">No PC detected. Tap Scan QR to connect</string>
-    <string name="device_online">Online</string>
+    <string name="pairing_title">输入配对码</string>
+    <string name="pairing_subtitle">%1$s 需要对方屏幕上显示的 6 位配对码。</string>
+    <string name="pairing_pin_hint">配对码</string>
+    <string name="pairing_pin_placeholder">000000</string>
+    <string name="pairing_pin_error_empty">还差 6 位数字</string>
+    <string name="pairing_pin_error_short">配对码是 6 位数字</string>
+    <string name="pairing_pin_error_wrong">配对码不对或已过期，请输入对方现在显示的配对码</string>
+    <string name="pairing_pin_error_no_pair_info">没有读到配对码，请扫码或手动输入</string>
+    <string name="pairing_peer_online">对方在线</string>
+    <string name="pairing_peer_offline">对方不在线</string>
+    <string name="pairing_peer_checking">正在确认对方是否在线…</string>
+    <string name="pairing_advanced">高级：手动填写地址</string>
+    <string name="pairing_host_label">对方 IP 地址</string>
+    <string name="pairing_host_hint">例如 192.168.1.20</string>
+    <string name="pairing_paste_hint">粘贴对方的配对链接（safedrop://pair…）会自动填好地址和配对码</string>
+    <string name="pairing_action_pair">配对</string>
+    <string name="pairing_action_pairing">正在配对…</string>
+    <string name="pairing_action_cancel">取消</string>
+    <string name="pairing_action_retry">重新输入</string>
+    <string name="pairing_success">已连接 %1$s</string>
+    <string name="pairing_not_remembered">本次会话不会被记住：对方换新配对码后，需要重新输入。</string>
+    <string name="pairing_advanced_hide">收起</string>
+    <string name="pairing_connecting">正在连接 %1$s…</string>
+    <string name="pairing_handshake_failed">对方没有接受这次握手，请再输入一次配对码</string>
+    <string name="pairing_host_error">请填写对方的 IP 地址</string>
+    <string name="pairing_peer_unreachable">找不到对方设备，请确认两台设备连的是同一个 Wi-Fi</string>
+
+    <!-- Own pairing code sheet -->
+    <string name="my_pairing_title">本机配对码</string>
+    <string name="my_pairing_hint">让对方用「扫码配对」扫描这个码，或在对方界面输入下面的配对码。</string>
+    <string name="my_pairing_code_label">配对码</string>
+    <string name="my_pairing_refresh">现在换一组</string>
+    <string name="my_pairing_refreshed">已换新配对码</string>
+    <string name="my_pairing_done">完成</string>
+    <string name="my_pairing_qr_failed">二维码没有生成，请让对方直接输入上面的配对码</string>
+    <string name="my_pairing_web_note">网页传送门需要 HTTPS 才能加密，本机只提供 http，所以网页只能打开、不能配对。</string>
+
+    <!-- Camera permission -->
+    <string name="camera_rationale_title">没有摄像头权限，看不到配对码</string>
+    <string name="camera_rationale_body">SafeDrop 只在扫码这一页使用摄像头，配对码不会被上传。</string>
+    <string name="camera_open_settings">打开系统设置</string>
+    <string name="camera_settings_unavailable">这台设备没有打开应用设置页，请在 设置 → 应用 → SafeDrop → 权限 里允许使用摄像头</string>
+    <string name="camera_retry">重新试一次</string>
+    <string name="camera_manual_entry">不扫码，手动输入配对码</string>
+
+    <!-- Radar &amp; Discovery -->
+    <string name="radar_title">局域网设备</string>
+    <string name="radar_scanning">正在搜索同一 Wi-Fi 下的设备…</string>
+    <string name="radar_scanning_subnet">正在搜索 %1$s* 这一段地址…</string>
+    <string name="radar_ready">已发现 %1$d 台设备，可以发送</string>
+    <string name="radar_listening">正在监听局域网（UDP %1$d），也可以扫码或输入配对码</string>
+    <string name="radar_no_network">这台设备还没有连上 Wi-Fi，发现不了局域网里的设备</string>
+    <string name="no_devices">还没有发现设备\n也可以扫码或输入配对码连接</string>
+    <string name="device_online">在线</string>
+    <string name="device_online_count">%1$d 台在线</string>
+    <string name="device_pc">电脑端</string>
+    <string name="device_phone">手机端</string>
+    <string name="device_pc_kind">电脑</string>
+    <string name="device_phone_kind">手机</string>
+    <string name="device_target_fallback">设备 %1$s</string>
+    <string name="fingerprint_label">设备指纹 %1$s</string>
 
     <!-- Transfers -->
-    <string name="send_file">Send File</string>
-    <string name="select_from_gallery">Media Gallery</string>
-    <string name="select_from_files">Documents</string>
-    <string name="transferring">Streaming file in chunks...</string>
-    <string name="transfer_complete">Transfer complete, saved to vault</string>
-    <string name="cancel_transfer">Cancel Transfer</string>
+    <string name="send_file">发送文件</string>
+    <string name="select_from_gallery">照片和视频</string>
+    <string name="select_from_files">文档</string>
+    <string name="transferring">正在传输…</string>
+    <string name="transfer_complete">传输完成</string>
+    <string name="cancel_transfer">取消传输</string>
+    <string name="transfer_from">来自：%1$s</string>
+    <string name="transfer_to">发给：%1$s</string>
+    <string name="transfer_failed">传输中断</string>
+    <string name="transfer_open_file">打开文件</string>
+    <string name="transfer_share_file">分享给其他应用</string>
+    <string name="transfer_saved_here">已保存到本机</string>
+    <string name="transfer_done_badge">已完成</string>
+    <string name="transfer_in_short">收到</string>
+    <string name="transfer_out_short">已发出</string>
+    <string name="transfer_received">已收到 %1$s，轻触这一行可以打开</string>
+    <string name="transfer_sent">已发送给 %1$s</string>
+    <string name="transfer_no_app">没有能打开这个文件的应用</string>
+    <string name="transfer_file_missing">本机已经找不到这个文件，可能被移走或删掉了</string>
+    <string name="transfer_read_failed">读不到这个文件，可能已被移走或重命名</string>
+    <string name="transfer_no_target">还没有可发送的设备，请先在设备页配对</string>
+    <string name="transfer_session_failed">没有与 %1$s 建立加密会话，请重新配对后再试</string>
+    <string name="select_target_title">发送到哪台设备？</string>
+    <string name="select_target_none">还没发现可接收的设备，等它出现后再试一次</string>
+    <string name="need_peer_first">请先选择一台设备</string>
+    <string name="transfer_queued">已加入 %1$d 个文件，正在依次发送</string>
+    <string name="pairing_error_generic">配对没有完成，请再输入一次对方现在的配对码</string>
+    <string name="pairing_pairing_toast">正在配对…</string>
+
+    <!-- Vault / received files -->
+    <string name="vault_title">已接收文件</string>
+    <string name="vault_refresh">刷新</string>
+    <string name="vault_empty">还没有收到文件\n对方发送完成后会出现在这里</string>
+    <string name="vault_open">打开</string>
+    <string name="vault_share">分享</string>
+    <string name="storage_title">保存位置</string>
+    <string name="storage_open">打开保存位置</string>
+    <string name="storage_change">换个位置</string>
+    <string name="storage_choice_title">收到的文件保存在哪里</string>
+    <string name="storage_choice_download">公共下载目录（Download/SafeDrop，照片和视频存入 Pictures/SafeDrop）</string>
+    <string name="storage_choice_pictures">相册目录（Pictures/SafeDrop）</string>
+    <string name="storage_choice_private">应用私有目录（其他应用看不到）</string>
+    <string name="storage_changed">已改为 %1$s</string>
+    <string name="storage_open_failed">系统文件管理器没有响应，文件仍在 %1$s</string>
+
+    <!-- Chat -->
+    <string name="chat_title">与对方传输</string>
+    <string name="chat_empty">选择一个设备开始发送文件或留言</string>
+    <string name="chat_hint">输入文字消息</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_clear">清空本条会话</string>
+    <string name="chat_cleared">已清空本条会话</string>
+    <string name="chat_no_peer">还没有可发送的设备</string>
+    <string name="chat_send_failed">消息没有送达：与对方的会话已失效，请重新配对</string>
+    <string name="chat_received">%1$s：%2$s</string>
+    <string name="chat_copy_text">复制全文</string>
+    <string name="chat_select_text">选中文本</string>
+
+    <!-- Settings -->
+    <string name="settings_theme_title">外观</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_theme_eyecare">护眼</string>
+    <string name="settings_theme_light">浅色</string>
+    <!-- Screen-reader suffix for the selected swatch; the visible marker is its ink border -->
+    <string name="settings_theme_selected_description">%1$s（当前）</string>
+    <string name="settings_network_title">网络与本机</string>
+    <string name="settings_local_ip">本机地址 %1$s:%2$d</string>
+    <string name="settings_target_pc">当前连接 %1$s:%2$d</string>
+    <string name="settings_target_none">尚未连接对方设备</string>
+    <string name="settings_channel">设备发现通道 UDP %1$d</string>
+    <string name="settings_crypto_title">关于加密</string>
+    <string name="settings_crypto_expand">展开</string>
+    <string name="settings_crypto_collapse">收起</string>
+    <string name="settings_crypto_body">文件在发送前用 AES-256-GCM 分块加密，每一块都要通过对方的校验才会落盘。\n\n密钥由一次性的 X25519 临时密钥和配对码一起推导（HKDF-SHA256），配对码本身不会在网络上传输，换一组后旧密钥即失效。\n\n能看到的范围只有同一个局域网。它保护的是链路上的窃听与篡改，不验证对方是谁——配对码被第三人看到，就能被第三人配对。接收目录里的文件由系统和其他应用照常可读。</string>
 
     <!-- Share Receiver -->
-    <string name="share_target_title">Send to PC with SafeDrop</string>
-    <string name="select_pc_hint">Select target Desktop Hub:</string>
-    <string name="share_sending">Packaging and sending...</string>
+    <string name="share_target_title">发送到电脑</string>
+    <string name="select_pc_hint">选择接收的设备：</string>
+    <string name="share_sending">正在发送…</string>
 
     <!-- Permissions -->
-    <string name="camera_permission_required">Camera permission required to scan PC QR code</string>
-    <string name="notification_permission_required">Notification permission required for transfer progress</string>
+    <string name="camera_permission_required">需要摄像头权限才能扫描配对码</string>
+    <string name="notification_permission_required">需要通知权限才能显示传输进度</string>
+
+    <!-- Battery optimization -->
+    <string name="battery_title">让传输在后台继续</string>
+    <string name="battery_body">部分品牌（OPPO / vivo / 小米）会在后台结束应用，中断正在进行的传输。允许 SafeDrop 后台运行可以避免这个情况。</string>
+    <string name="battery_go">前往设置</string>
+    <string name="battery_later">稍后</string>
+    <string name="battery_never">不再提示</string>
+    <string name="battery_manual">请在系统设置里手动允许 SafeDrop 后台运行</string>
+
+    <!--
+      The app speaks one language, so this file is the only strings resource: the default
+      configuration is Chinese and there are no values-zh* overrides to keep in step. Adding a
+      second language means adding values-en/ here, not translating this file in place.
+    -->
+    <string name="pairing_pin_error_offline">找不到对方设备，请确认两台设备连的是同一个 Wi-Fi</string>
+    <string name="pairing_peer_refreshed">对方已换新配对码，请输入新的 6 位数字</string>
+    <string name="my_pairing_address_label">本机地址</string>
+    <string name="transfer_in">%1$s 发来 %2$s</string>
+    <string name="transfer_out">发给 %1$s</string>
+    <string name="transfer_saved_to">已保存到 %1$s</string>
 </resources>

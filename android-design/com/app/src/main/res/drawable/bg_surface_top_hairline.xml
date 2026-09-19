@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Surface with a single hairline along its top edge: how the nav bar and the input bar are
+     separated from the panel, instead of throwing a shadow over the content. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorSurface" />
+        </shape>
+    </item>
+    <item
+        android:gravity="top"
+        android:height="@dimen/hairline_width">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorOutline" />
+        </shape>
+    </item>
+</layer-list>

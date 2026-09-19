@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- One discovered device. The icon says what it is, the tag says which end, and the address /
+     fingerprint are monospace because they are compared digit by digit. -->
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="10dp"
+    android:layout_marginBottom="8dp"
     app:cardBackgroundColor="@color/surface_dark"
-    app:cardCornerRadius="16dp"
+    app:cardCornerRadius="@dimen/radius_large"
+    app:cardElevation="0dp"
     app:strokeColor="@color/border_dark"
-    app:strokeWidth="1dp">
+    app:strokeWidth="@dimen/hairline_width">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -23,9 +27,10 @@
             android:layout_height="@dimen/device_icon_size"
             android:background="@drawable/bg_badge_rounded"
             android:backgroundTint="@color/surface_variant_dark"
+            android:contentDescription="@string/radar_title"
             android:padding="@dimen/spacing_medium"
             android:src="@drawable/ic_device_pc"
-            app:tint="@color/secondary" />
+            app:tint="@color/ink" />
 
         <LinearLayout
             android:layout_width="0dp"
@@ -46,12 +51,13 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
                     android:maxLines="1"
                     android:singleLine="true"
                     android:text="Windows 桌面中枢端"
                     android:textColor="@color/text_primary_dark"
                     android:textSize="@dimen/text_size_body"
-                    android:textStyle="bold" />
+                    android:textStyle="normal" />
 
                 <TextView
                     android:id="@+id/tvDevicePlatformTag"
@@ -60,12 +66,14 @@
                     android:layout_marginStart="6dp"
                     android:background="@drawable/bg_badge_rounded"
                     android:backgroundTint="@color/surface_variant_dark"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.06"
                     android:paddingHorizontal="6dp"
                     android:paddingVertical="2dp"
-                    android:text="电脑端"
-                    android:textColor="@color/secondary"
+                    android:text="@string/device_pc"
+                    android:textColor="@color/text_secondary_dark"
                     android:textSize="10sp"
-                    android:textStyle="bold" />
+                    android:textStyle="normal" />
             </LinearLayout>
 
             <TextView
@@ -74,6 +82,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:ellipsize="end"
+                android:fontFamily="monospace"
                 android:maxLines="1"
                 android:singleLine="true"
                 android:text="192.168.10.42:8899"
@@ -86,11 +95,12 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:ellipsize="end"
+                android:fontFamily="monospace"
                 android:maxLines="1"
                 android:singleLine="true"
-                android:text="指纹: 8A3F9C01"
-                android:textColor="@color/success"
-                android:textSize="10sp" />
+                android:textColor="@color/text_muted_dark"
+                android:textSize="10sp"
+                tools:text="8A3F9C01" />
         </LinearLayout>
 
         <LinearLayout
@@ -102,7 +112,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnOpenChat"
-                style="@style/Widget.Material3.Button.TonalButton"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="@dimen/button_height_small"
                 android:layout_marginEnd="@dimen/spacing_xsmall"
@@ -113,13 +123,13 @@
                 android:minWidth="@dimen/touch_target_min"
                 android:paddingHorizontal="@dimen/spacing_medium"
                 android:text="会话"
-                android:textColor="@color/secondary"
+                android:textColor="@color/text_secondary_dark"
                 android:textSize="@dimen/text_size_caption"
-                app:cornerRadius="20dp"
+                app:cornerRadius="@dimen/radius_medium"
                 app:icon="@drawable/ic_chat"
                 app:iconPadding="@dimen/spacing_xxsmall"
                 app:iconSize="16dp"
-                app:iconTint="@color/secondary" />
+                app:iconTint="@color/text_secondary_dark" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnConnectDevice"
@@ -132,11 +142,11 @@
                 android:insetBottom="0dp"
                 android:minWidth="@dimen/touch_target_min"
                 android:paddingHorizontal="@dimen/spacing_medium"
-                android:text="投送"
+                android:text="@string/send_file"
                 android:textColor="@color/on_primary"
                 android:textSize="@dimen/text_size_caption"
                 app:backgroundTint="@color/primary"
-                app:cornerRadius="20dp" />
+                app:cornerRadius="@dimen/radius_medium" />
 
         </LinearLayout>
 

@@ -10,7 +10,9 @@ import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -22,17 +24,22 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.safedrop.mobile.R
 import com.safedrop.mobile.core.network.NetworkHelper
 import com.safedrop.mobile.databinding.ActivityQrScannerBinding
 
 import java.util.concurrent.Executors
 
 /**
- * CameraX + Google ML Kit Barcode Scanner Viewfinder
- * Features:
- * 1. Scans dynamic offline connection QR codes on desktop screen.
- * 2. Parses protocol: safedrop://pair?ip={IP}&port={Port}&fp={FP}&token={Token}&pin={PIN}
- * 3. Extracts target hub parameters to establish direct unicast connection penetrating AP isolation.
+ * CameraX + ML Kit viewfinder.
+ *
+ * 1. Scans the pairing code shown on the other device's screen.
+ * 2. Parses `safedrop://pair?ip=…&port=…&fp=…&token=…&pin=…` (plus the legacy JSON and http forms).
+ * 3. Hands the parameters back to the pairing sheet, which does the handshake.
+ *
+ * A refused camera permission is a state with a way out, not a reason to close: the viewfinder is
+ * replaced by a short rationale with the system settings, a retry, and the pairing sheet for
+ * people who would rather type the six digits.
  */
 class QrScannerActivity : AppCompatActivity() {
 
@@ -45,10 +52,20 @@ class QrScannerActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
+            showViewfinder()
             startCamera()
         } else {
-            Toast.makeText(this, "需开启摄像头权限以扫描电脑端二维码", Toast.LENGTH_SHORT).show()
-            finish()
+            showPermissionState()
+        }
+    }
+
+    private val openSettingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        // The user may have granted it in settings, or may not have. Re-check either way.
+        if (hasCameraPermission()) {
+            showViewfinder()
+            startCamera()
         }
     }
 
@@ -58,19 +75,70 @@ class QrScannerActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.btnBack.setOnClickListener { finish() }
-        binding.btnManualPin.setOnClickListener {
-            val resultIntent = Intent().apply {
-                putExtra("EXTRA_MANUAL_PIN", true)
-            }
-            setResult(RESULT_OK, resultIntent)
-            finish()
-        }
+        binding.btnManualPin.setOnClickListener { handOffToPinEntry() }
+        binding.btnPermissionManualPin.setOnClickListener { handOffToPinEntry() }
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+        binding.btnRetryPermission.setOnClickListener {
+            if (shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) {
+                requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+            } else {
+                // Denied with "don't ask again": the only retry left is the system page.
+                openAppSettings()
+            }
+        }
+        binding.btnOpenAppSettings.setOnClickListener { openAppSettings() }
+
+        if (hasCameraPermission()) {
+            showViewfinder()
             startCamera()
         } else {
             requestPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Came back from the system settings page with the permission granted.
+        if (binding.layoutPermissionState.visibility == View.VISIBLE && hasCameraPermission()) {
+            showViewfinder()
+            startCamera()
+        }
+    }
+
+    private fun hasCameraPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+
+    private fun showViewfinder() {
+        binding.layoutPermissionState.visibility = View.GONE
+        binding.previewView.visibility = View.VISIBLE
+        binding.layoutScannerHeader.visibility = View.VISIBLE
+        binding.layoutReticle.visibility = View.VISIBLE
+        binding.layoutScannerFooter.visibility = View.VISIBLE
+    }
+
+    private fun showPermissionState() {
+        binding.layoutPermissionState.visibility = View.VISIBLE
+        binding.layoutReticle.visibility = View.GONE
+        binding.layoutScannerFooter.visibility = View.GONE
+    }
+
+    private fun openAppSettings() {
+        try {
+            openSettingsLauncher.launch(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            )
+        } catch (e: Exception) {
+            Toast.makeText(this, R.string.camera_settings_unavailable, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Ask the caller to show the pairing sheet instead of the camera. */
+    private fun handOffToPinEntry() {
+        setResult(RESULT_OK, Intent().putExtra(EXTRA_MANUAL_PIN, true))
+        finish()
     }
 
     private fun startCamera() {
@@ -78,12 +146,10 @@ class QrScannerActivity : AppCompatActivity() {
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
 
-            // 1. Camera preview
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(binding.previewView.surfaceProvider)
             }
 
-            // 2. ML Kit barcode image analyzer optimized for QR Code format
             val options = com.google.mlkit.vision.barcode.BarcodeScannerOptions.Builder()
                 .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
                 .build()
@@ -98,14 +164,22 @@ class QrScannerActivity : AppCompatActivity() {
                     val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
                     barcodeScanner.process(image)
                         .addOnSuccessListener { barcodes ->
+                            var matched = false
                             for (barcode in barcodes) {
                                 val rawValue = barcode.rawValue ?: continue
                                 val trimmed = rawValue.trim()
                                 if (trimmed.startsWith("safedrop://") || trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("{")) {
                                     triggerHapticFeedback()
                                     handleScannedUri(trimmed)
+                                    matched = true
                                     break
                                 }
+                            }
+                            // A frame with a code in it that is not ours is the case where the
+                            // user is pointing at the wrong square; say so, at most every few
+                            // seconds, instead of leaving the viewfinder silently doing nothing.
+                            if (!matched && barcodes.isNotEmpty()) {
+                                reportUnrelatedCode()
                             }
                         }
                         .addOnCompleteListener {
@@ -126,9 +200,25 @@ class QrScannerActivity : AppCompatActivity() {
                 )
             } catch (e: Exception) {
                 Log.e(tag, "Failed to bind CameraX lifecycle: ${e.message}")
+                // A camera another app is holding should not leave a black screen behind.
+                showPermissionState()
             }
 
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private var lastUnrelatedToastAt = 0L
+
+    /** Called from the camera analysis thread, so the toast goes back to the main thread. */
+    private fun reportUnrelatedCode() {
+        val now = System.currentTimeMillis()
+        if (now - lastUnrelatedToastAt < 4000) return
+        lastUnrelatedToastAt = now
+        runOnUiThread {
+            if (!isFinishing) {
+                Toast.makeText(this, R.string.scan_not_pair_code, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun triggerHapticFeedback() {
@@ -192,20 +282,27 @@ class QrScannerActivity : AppCompatActivity() {
                     theme = uri.getQueryParameter("theme") ?: ""
                 }
 
+                if (ip.isEmpty() || (pin.isEmpty() && token.isEmpty())) {
+                    // Nothing usable on this code: keep scanning instead of pairing against a blank.
+                    isScanned = false
+                    Toast.makeText(this, R.string.scan_result_incomplete, Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+
                 val resultIntent = Intent().apply {
-                    putExtra("EXTRA_IP", ip)
-                    putExtra("EXTRA_PORT", port)
-                    putExtra("EXTRA_FP", fp)
-                    putExtra("EXTRA_TOKEN", token)
-                    putExtra("EXTRA_PIN", pin)
-                    putExtra("EXTRA_THEME", theme)
+                    putExtra(EXTRA_IP, ip)
+                    putExtra(EXTRA_PORT, port)
+                    putExtra(EXTRA_FP, fp)
+                    putExtra(EXTRA_TOKEN, token)
+                    putExtra(EXTRA_PIN, pin)
+                    putExtra(EXTRA_THEME, theme)
                 }
                 setResult(RESULT_OK, resultIntent)
-                Toast.makeText(this, "配对码解析成功 ($ip:$port)，正在建立信任锚点...", Toast.LENGTH_SHORT).show()
                 finish()
             } catch (e: Exception) {
                 Log.e(tag, "Failed to parse QR URI: ${e.message}")
                 isScanned = false
+                Toast.makeText(this, R.string.scan_result_unreadable, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -213,5 +310,15 @@ class QrScannerActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+    }
+
+    companion object {
+        const val EXTRA_IP = "EXTRA_IP"
+        const val EXTRA_PORT = "EXTRA_PORT"
+        const val EXTRA_FP = "EXTRA_FP"
+        const val EXTRA_TOKEN = "EXTRA_TOKEN"
+        const val EXTRA_PIN = "EXTRA_PIN"
+        const val EXTRA_THEME = "EXTRA_THEME"
+        const val EXTRA_MANUAL_PIN = "EXTRA_MANUAL_PIN"
     }
 }
