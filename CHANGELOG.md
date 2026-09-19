@@ -152,8 +152,10 @@ ends drifted apart in the first place.
   neither read, write nor wipe device names and chat history. The Kotlin suite runs 14 unit tests
   against the same vectors.
 - **CI gates on all of it.** `test-desktop` was a syntax check; it now runs the protocol check, the
-  vector reproducibility check, the `node:test` suite and three end-to-end suites on Node 22, next
-  to the version-consistency job. `test-android` printed "✅ Android project structure validated"
+  vector reproducibility check, the `node:test` suite and six end-to-end suites on Node 24 — the
+  same version the numbers below were measured on — next to the version-consistency job, which is
+  pinned to 24 as well so no job in this repository runs a Node the project has never been tested
+  on. `test-android` printed "✅ Android project structure validated"
   without building anything; it now installs Gradle at the pinned version, runs
   `testDebugUnitTest` for real and uploads the report, so the shared vectors are enforced on both
   implementations in CI rather than in theory. (That job is the one change here a local run cannot

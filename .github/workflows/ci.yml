@@ -17,7 +17,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '22'
+        node-version: '24'
         
     - name: Syntax check every backend and UI script
       run: |
@@ -136,7 +136,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '24'
 
     - name: Assert all version strings agree with the hub's APP_VERSION
       run: node scripts/version-check.js

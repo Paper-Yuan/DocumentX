@@ -41,7 +41,7 @@ SafeDrop 是一个局域网文件互传工具，三个端：
 
 ## 30 秒上手
 
-需要 Node.js。CI 的桌面 job 固定在 Node 22（版本检查那个 job 是 20）。本文标了"实测"的数字都是 2026-09-19 在 Windows / Node 24.19.0 上跑出来的；没跑过的命令会写明。桌面后端不需要 `npm install`——它没有第三方依赖。
+需要 Node.js。CI 的两个 Node job 都固定在 **Node 24**，与本文标"实测"的数字同一版本（2026-09-19 于 Windows / Node 24.19.0 跑出）。更低版本没有验证过，因此这里不承诺能跑；`node --test` 的 glob 参数本身就要求较新的 Node。没跑过的命令会写明。桌面后端不需要 `npm install`——它没有第三方依赖。
 
 ```bash
 git clone https://github.com/Paper-Yuan/DocumentX.git

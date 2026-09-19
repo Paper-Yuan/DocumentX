@@ -6,7 +6,7 @@
 
 | 目标 | 需要 | 备注 |
 |:---|:---|:---|
-| 桌面后端 + 界面 + 全部 Node 测试 | Node.js（CI 用 22） | **不需要 `npm install`**，见下方"零依赖"规则 |
+| 桌面后端 + 界面 + 全部 Node 测试 | Node.js（CI 用 24，README 里的实测数字同版本） | **不需要 `npm install`**，见下方"零依赖"规则 |
 | Android 编译与单元测试 | JDK 17、Android SDK（API 34）、Gradle | 工程在 `apps/android/com`；`local.properties` 写 `sdk.dir=...`，该文件已 gitignore |
 | Tauri 外壳 | Rust 工具链 + MSVC 构建环境 + `npm install`（只为拿 `@tauri-apps/cli`） | CI 完全不构建它 |
 | Windows 安装包 | `.NET Framework 4` 的 `csc.exe`、PowerShell（zip） | 见 `apps/desktop/installer/README.md` |
