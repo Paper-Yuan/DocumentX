@@ -37,6 +37,8 @@ jobs:
     # Section 8 of the transport suite relays a chunk to an address that is not the hub's own.
     # A single-NIC runner has no such address, and the section would skip - which is how the
     # relay path ends up untested while CI still looks green. Give the runner one instead.
+    # The suite prints which default rule the destination was allowed under: on this address it
+    # is the RFC1918 range rather than on-link, and the on-link rule has its own unit test.
     - name: Give the runner a second local address for the relay test
       run: |
         sudo ip -4 addr add 192.168.250.1/24 dev lo

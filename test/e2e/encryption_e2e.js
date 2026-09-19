@@ -214,7 +214,12 @@ async function main() {
   // The relay destination must not be the hub's own address, or the hub treats the chunk as
   // a local upload rather than a relay.
   const hubSelfIp = json(await request('GET', '/api/v1/info', { host: LOOPBACK }))?.localIp;
-  RELAY_DEST_HOST = localCandidates.find((ip) => ip !== hubSelfIp) || null;
+  // Prefer a destination that is genuinely on-link, so the stronger rule is the one exercised when
+  // the host can offer one; fall back to any other address, which still proves the relay path.
+  const guard = require('../../apps/desktop/desktop_hub/lan_guard');
+  RELAY_DEST_HOST = localCandidates.find((ip) => ip !== hubSelfIp && guard.isOnLocalSubnet(ip))
+    || localCandidates.find((ip) => ip !== hubSelfIp)
+    || null;
   if (RELAY_DEST_HOST) {
     console.log(`▶ Relay destination for the phone-to-phone check: ${RELAY_DEST_HOST}`);
   } else {
@@ -750,11 +755,20 @@ async function main() {
   } else {
   // The sender negotiates its own session with the destination phone; the hub holds no such
   // key, so it must forward the sealed bytes without unwrapping them.
-  // The destination is on this machine's own subnet and was NOT allowlisted via the
-  // environment, so reaching it also proves the same-subnet rule works by default.
+  // Which default rule lets this destination through depends on the host: an on-link peer proves
+  // the same-subnet rule, anything else in private space proves the RFC1918 rule. Say which one
+  // was exercised rather than asserting the stronger claim unconditionally - the on-link rule has
+  // its own unit test in test/lan-guard.test.js, so nothing goes uncovered by naming the rule here.
   const lanGuard = require('../../apps/desktop/desktop_hub/lan_guard');
-  check('the relay destination is on the hub own subnet', () => {
-    assert.ok(lanGuard.isOnLocalSubnet(RELAY_DEST_HOST), `${RELAY_DEST_HOST} should be on-link`);
+  const onLink = lanGuard.isOnLocalSubnet(RELAY_DEST_HOST);
+  const relayRule = onLink ? 'on-link subnet' : 'RFC1918 private range';
+  check(`the relay destination is allowed by a default rule (${relayRule})`, () => {
+    assert.ok(lanGuard.isAllowedRelayTarget(RELAY_DEST_HOST),
+      `${RELAY_DEST_HOST} is allowed by no default rule, so the relay below would prove nothing`);
+    if (!onLink) {
+      assert.ok(/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(RELAY_DEST_HOST),
+        `${RELAY_DEST_HOST} is neither on-link nor RFC1918, yet the guard allowed it`);
+    }
   });
   const destKeyPair = PROTO.generateKeyPair('x25519');
   const destRawPub = PROTO.exportRawPublicKey(destKeyPair, 'x25519');
