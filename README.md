@@ -101,6 +101,7 @@ cd apps/android/com
 - **UDP beacon 自发现**（`8890`，每 3 秒定向广播）与手机侧 `MulticastLock` 接收、以及 hub 对 Clash / TAP / TUN / vEthernet 网卡的过滤：代码在（`server.js` 的广播定时器、`getAllLocalIps`，Android 的 `UdpDiscoveryHelper.kt`），但**没有任何一条测试发过或收过一个 beacon**——仓库里连 `dgram` 的测试引用都没有。这条链路只能靠真机看界面确认。
 - **Tauri 外壳**：托盘、3 个全局快捷键、注册失败不阻断启动（`apps/desktop/tauri-app/src-tauri/src/main.rs`）。CI 不构建它，本次也没能在这台机器上跑完 `npx tauri build`，所以当前 `main` 的 Tauri 构建**未经验证**。
 - **Android 端全部行为**：前台服务保活、WakeLock、扫码配对、系统分享入口、分区存储写入、以及手机接收端的定位写入 / CORS / 限流。CI 的 Android job 没有模拟器，只跑 JVM 单元测试，所以这些只是"编译通过 + 加密实现与契约一致"。
+- **Android 的 `RadarView` 是一个没接上的自定义视图**：全项目没有任何 layout 实例化它，`MainActivity` 也从不调用它的 `setThemeMode()` / `setConnectedDevice()`；手机主界面那个"雷达"位上放的是一张静态 `ic_radar` 图标。它已经改成从共享 token 取色（不再有 Tailwind 时代的靛紫），但在被写进布局之前，**它对屏幕没有任何影响**——桌面端才有真正会转的雷达。
 - **Windows 安装包构建本身**：`build_installer.js` 的载荷校验逻辑有单测（第一档最后一行）；脚本自身的目录常量已随重构修正，但**没有跑过一次真实构建**（需要 Inno Setup 与 .NET 编译器），所以"安装包能出"这件事仍只有代码审阅级保证。
 
 ### 三 · 计划中（现在代码里没有）
@@ -217,7 +218,7 @@ DocumentX/
 
 - 三套主题必须定义同一组 token，任何一套缺项即红；UI 能选的主题必须与 CSS 里真的画出来的主题一一对应。
 - **任何界面文件都不许通过网络取字体或其它资源**（重做前 `index.html` 拉 Plus Jakarta Sans、`portal.html` 拉 Outfit，纯局域网环境下字体根本加载不出来，还让一个免安装页面为渲染文字去连外网）。
-- 主按钮不许有渐变或彩色发光；token 块之外出现色值即红（雷达等待清偿的文件被列进"色值债务"清单，清单内容变化本身会让检查失败，所以只能变小不能变大）。
+- 主按钮不许有渐变或彩色发光；token 块之外出现色值即红（色值债务清单只能变小不能变大：清单内容发生变化本身就会让检查失败，无论变多还是变少）。
 - 滚动条滑块必须与自己的轨道看得见差异、悬停必须有反馈；文本可选中而界面外壳不可选中。
 
 这两套的 skip 是诚实的：APK 那条要求一个不入库的本地产物，消息中继那条要求 8899 上有 hub 在应答——都打印原因，绝不记为通过。

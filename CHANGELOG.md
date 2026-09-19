@@ -273,6 +273,17 @@ and nothing else**. It was not only taste — the old look had real defects behi
   uses the active hue at an alpha that stays legible on either plate.
 - The Tauri CSP still granted `fonts.googleapis.com` and `fonts.gstatic.com` after the webfonts
   were deleted. A permission for a resource the app no longer loads is just surface area.
+- **Android's `RadarView` stopped painting the old palette.** It held 25 colour literals - indigo
+  `#6366F1`, violet sweep heads, an emerald beacon - so the phone's radar disagreed with the
+  desktop's on the one element that gives the product its look. Every one of them now comes from
+  the shared `Palette`, with translucency derived from the tokens instead of re-spelled, and the
+  colour-debt registry shrank from three files to two. The ratchet was shown to bite in both
+  directions: putting one `parseColor("#6366F1")` back fails the suite, and so does leaving a now
+  clean file registered as debt.
+  **It is also dead code**: no layout inflates `RadarView` and nothing calls `setThemeMode()` or
+  `setConnectedDevice()`, so the phone's radar slot shows a static `ic_radar` drawable. That is
+  documented in the README rather than quietly fixed, because wiring it up is a visual decision
+  that cannot be reviewed on a machine with no emulator.
 
 ### Planned
 - Resumable file transfer with breakpoint continuation — the authenticated chunk set and positional

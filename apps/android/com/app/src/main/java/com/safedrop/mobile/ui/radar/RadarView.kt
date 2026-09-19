@@ -6,16 +6,23 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
+import androidx.core.graphics.ColorUtils
+import com.safedrop.mobile.ui.Palette
 
 /**
  * Mobile High-Precision Dynamic Radar Canvas (RadarView)
- * Aligned 1:1 with desktop specifications:
- * 1. 4 concentric distance range rings: 5m, 15m, 30m, 50m with range labels
- * 2. Crosshair axes with micro-ticks
- * 3. 360-degree rotating sweep gradient beam with 40-degree tail
- * 4. Periodic sonar wave expansion ripples
- * 5. Dynamic theme support for Dark, EyeCare, and Light color modes
- * 6. Online desktop device beacon node rendering on 15m orbit
+ * Aligned with the desktop instrument (style.css `--radar-line` / `--radar-sweep` / `.radar-blip`):
+ * 1. 4 concentric distance range rings: 5m, 15m, 30m, 50m with range labels - hairline
+ * 2. Crosshair axes with micro-ticks - the same hairline, as on desktop where both are --radar-line
+ * 3. 360-degree rotating sweep beam with 40-degree tail - translucent muted ink, never a colour glow
+ * 4. Periodic sonar wave expansion ripples - hairline: scanning is not a state
+ * 5. Dynamic theme support for Dark, EyeCare, and Light by way of [Palette], so a mode flip moves
+ *    surfaces and nothing else
+ * 6. Online desktop device beacon node rendering on 15m orbit - the one `ready` hue on the canvas
+ *
+ * No colour is named in this file. Every paint is a [Palette] token, or a token with an alpha
+ * applied by [translucent], which is what stops the two ends of the product from each keeping
+ * their own idea of what the radar looks like.
  */
 class RadarView @JvmOverloads constructor(
     context: Context,
@@ -25,7 +32,10 @@ class RadarView @JvmOverloads constructor(
 
     private var scanAngle = 0f
     private var waveProgress = 0f
-    private var currentTheme = "dark" // "dark" | "eyecare" | "light"
+    private var currentTheme = Palette.DARK
+
+    /** Paint for the current mode. Only [applyThemeColors] replaces it, and only on a mode change. */
+    private var palette = Palette.of(context, currentTheme)
 
     private var connectedIp: String? = null
     private var connectedName: String? = null
@@ -33,21 +43,28 @@ class RadarView @JvmOverloads constructor(
     // 4 concentric range labels aligned with desktop hub
     private val distanceLabels = listOf("5m", "15m", "30m", "50m")
 
+    // The sweep's tail-to-head alpha ramp, applied to `inkMuted` - the token colors.xml names
+    // radar_scan_beam. Desktop's --radar-sweep is a neutral at 8-10% across its whole conic
+    // gradient; this canvas fills a far larger disc, so the head keeps half of the 40% it used to
+    // carry and the tail stays as faint as it was. Same ramp shape, no hue, no glow.
+    private companion object {
+        const val SWEEP_TAIL_ALPHA = 16
+        const val SWEEP_HEAD_ALPHA = 64
+    }
+
+    // Structure paints: rings, axes, the pings that mean "still looking", and the labels.
     private val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2f
-        color = Color.parseColor("#334155")
     }
 
     private val crosshairPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 1.5f
-        color = Color.parseColor("#334155")
     }
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 24f
-        color = Color.parseColor("#64748B")
         textAlign = Paint.Align.LEFT
     }
 
@@ -56,31 +73,30 @@ class RadarView @JvmOverloads constructor(
         strokeWidth = 3f
     }
 
+    // The local node: a neutral plate with the surface knocked out of it, like .hub-avatar.
     private val centerDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.parseColor("#6366F1")
     }
 
     private val sweepPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
 
+    // State paint: a peer that is actually there, and the sonar circle announcing it.
     private val beaconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.parseColor("#10B981")
     }
 
     private val beaconWavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2.5f
-        color = Color.parseColor("#10B981")
     }
 
     private var animator: ValueAnimator? = null
 
     init {
-        startAnimation()
         applyThemeColors()
+        startAnimation()
     }
 
     fun setThemeMode(theme: String) {
@@ -95,27 +111,19 @@ class RadarView @JvmOverloads constructor(
         invalidate()
     }
 
+    /** A token with an alpha applied. Translucent ink is still ink, so no new colour appears. */
+    private fun translucent(color: Int, alpha: Int) = ColorUtils.setAlphaComponent(color, alpha)
+
     private fun applyThemeColors() {
-        when (currentTheme) {
-            "eyecare" -> {
-                circlePaint.color = Color.parseColor("#D8D3C5")
-                crosshairPaint.color = Color.parseColor("#C8C3B5")
-                textPaint.color = Color.parseColor("#5C6D62")
-                centerDotPaint.color = Color.parseColor("#2E7D56")
-            }
-            "light" -> {
-                circlePaint.color = Color.parseColor("#E2E8F0")
-                crosshairPaint.color = Color.parseColor("#CBD5E1")
-                textPaint.color = Color.parseColor("#64748B")
-                centerDotPaint.color = Color.parseColor("#2563EB")
-            }
-            else -> { // dark
-                circlePaint.color = Color.parseColor("#334155")
-                crosshairPaint.color = Color.parseColor("#1E293B")
-                textPaint.color = Color.parseColor("#64748B")
-                centerDotPaint.color = Color.parseColor("#6366F1")
-            }
-        }
+        palette = Palette.of(context, currentTheme)
+        val p = palette
+        circlePaint.color = p.hairline
+        crosshairPaint.color = p.hairline
+        wavePaint.color = p.hairline
+        textPaint.color = p.inkFaint
+        centerDotPaint.color = p.ink
+        beaconPaint.color = p.ready
+        beaconWavePaint.color = p.ready
     }
 
     private fun startAnimation() {
@@ -164,26 +172,13 @@ class RadarView @JvmOverloads constructor(
             canvas.drawLine(cx - tickSize, cy - r, cx + tickSize, cy - r, crosshairPaint)
         }
 
-        // 3. Draw 360-degree rotating sweep beam with gradient tail
+        // 3. Draw 360-degree rotating sweep beam with gradient tail: structure, so it is a
+        // muted neutral, and it is the same one in all three modes.
         canvas.save()
         canvas.rotate(scanAngle, cx, cy)
 
-        val sweepStartColor: Int
-        val sweepEndColor: Int
-        when (currentTheme) {
-            "eyecare" -> {
-                sweepStartColor = Color.parseColor("#152E7D56")
-                sweepEndColor = Color.parseColor("#7052B788")
-            }
-            "light" -> {
-                sweepStartColor = Color.parseColor("#152563EB")
-                sweepEndColor = Color.parseColor("#603B82F6")
-            }
-            else -> {
-                sweepStartColor = Color.parseColor("#1238BDF8")
-                sweepEndColor = Color.parseColor("#6538BDF8")
-            }
-        }
+        val sweepStartColor = translucent(palette.inkMuted, SWEEP_TAIL_ALPHA)
+        val sweepEndColor = translucent(palette.inkMuted, SWEEP_HEAD_ALPHA)
 
         val shader = SweepGradient(
             cx, cy,
@@ -194,26 +189,21 @@ class RadarView @JvmOverloads constructor(
         canvas.drawCircle(cx, cy, maxRadius, sweepPaint)
         canvas.restore()
 
-        // 4. Draw dual expanding sonar ripples
-        val waveColorHex = when (currentTheme) {
-            "eyecare" -> "#52B788"
-            "light" -> "#3B82F6"
-            else -> "#38BDF8"
-        }
+        // 4. Draw dual expanding sonar ripples: the dial looking, which is not a state, so the
+        // old sky/emerald/blue ping is now the same hairline the rings are drawn with.
         for (offset in listOf(0f, 0.5f)) {
             val p = (waveProgress + offset) % 1f
             val waveR = maxRadius * p
             val alpha = ((1f - p) * 180).toInt().coerceIn(0, 255)
-            wavePaint.color = Color.parseColor(waveColorHex)
-            wavePaint.alpha = alpha
+            wavePaint.color = translucent(palette.hairline, alpha)
             canvas.drawCircle(cx, cy, waveR, wavePaint)
         }
 
-        // 5. Draw center local device node
+        // 5. Draw center local device node: an ink plate, knocked out with the surface behind it.
         canvas.drawCircle(cx, cy, 12f, centerDotPaint)
-        centerDotPaint.color = Color.WHITE
+        centerDotPaint.color = palette.surface
         canvas.drawCircle(cx, cy, 5f, centerDotPaint)
-        applyThemeColors()
+        centerDotPaint.color = palette.ink
 
         // 6. If connected to desktop hub, render beacon on 15m orbit
         if (!connectedIp.isNullOrEmpty()) {
@@ -225,13 +215,13 @@ class RadarView @JvmOverloads constructor(
             // Pulsing sonar circle
             val beaconWaveR = 14f + (waveProgress * 22f)
             val beaconAlpha = ((1f - waveProgress) * 220).toInt().coerceIn(0, 255)
-            beaconWavePaint.alpha = beaconAlpha
+            beaconWavePaint.color = translucent(palette.ready, beaconAlpha)
             canvas.drawCircle(bx, by, beaconWaveR, beaconWavePaint)
 
-            // Beacon center dot
-            beaconPaint.color = Color.parseColor("#10B981")
+            // Beacon center dot: the one hue on this dial, because a peer is really there.
+            beaconPaint.color = palette.ready
             canvas.drawCircle(bx, by, 9f, beaconPaint)
-            beaconPaint.color = Color.WHITE
+            beaconPaint.color = palette.surface
             canvas.drawCircle(bx, by, 4f, beaconPaint)
 
             // Device label

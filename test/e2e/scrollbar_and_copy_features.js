@@ -540,8 +540,9 @@ console.log('\n-- shared design contract: where a colour may live');
 // Files that still own un-tokened paint. Each entry is debt the ink-first redesign has not
 // paid off yet; the check prints it on every run and fails if the set changes either way, so
 // it cannot grow and cannot rot into a lie. Delete an entry when its file is converted.
+// RadarView.kt used to be here with 25 literals: the dial now paints Palette tokens, so the
+// Android radar and the desktop `--radar-line` / `--radar-sweep` dial agree again.
 const COLOUR_DEBT = [
-  { file: 'apps/android/com/app/src/main/java/com/safedrop/mobile/ui/radar/RadarView.kt', why: 'the radar still paints its own Tailwind-era slate/indigo/emerald hexes instead of Palette colours' },
   { file: 'apps/android/com/app/src/main/res/layout/dialog_transfer_sheet.xml', why: 'the sheet handle is a raw slate-600' },
   { file: 'apps/android/com/app/src/main/res/layout/activity_qr_scanner.xml', why: 'the camera scrim is a raw ARGB literal' }
 ];
