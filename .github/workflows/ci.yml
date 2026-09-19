@@ -101,18 +101,6 @@ jobs:
         path: apps/android/com/app/build/test-results/testDebugUnitTest/*.xml
         if-no-files-found: error
         
-  lint-kotlin:
-    name: Lint Kotlin Code
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Check Kotlin files exist
-      run: |
-        find apps/android -name "*.kt" -type f | head -5
-        echo "✅ Kotlin source files found"
-        
   check-docs:
     name: Check Documentation
     runs-on: ubuntu-latest
@@ -121,10 +109,23 @@ jobs:
     - uses: actions/checkout@v4
     
     - name: Verify essential docs
+      # The old version printed "LICENSE recommended" when LICENSE existed, and swallowed a
+      # missing CHANGELOG entirely. Assert the files instead, and fail if one disappears.
       run: |
-        test -f README.md && echo "✅ README.md exists"
-        test -f LICENSE && echo "⚠️  LICENSE recommended" || true
-        test -f CHANGELOG.md && echo "✅ CHANGELOG.md exists" || true
+        set -euo pipefail
+        missing=0
+        for f in README.md LICENSE CHANGELOG.md CONTRIBUTING.md SECURITY.md; do
+          if [ -f "$f" ]; then
+            echo "ok       $f"
+          else
+            echo "missing  $f"
+            missing=1
+          fi
+        done
+        if [ "$missing" -ne 0 ]; then
+          echo "::error::a documentation file this project points people at is gone"
+          exit 1
+        fi
 
   check-version:
     name: Version Consistency
