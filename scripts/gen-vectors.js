@@ -26,7 +26,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..');
-const PROTO = require(path.join(ROOT, 'computer-design/desktop_hub/crypto_protocol'));
+const PROTO = require(path.join(ROOT, 'apps/desktop/desktop_hub/crypto_protocol'));
 const OUT_REL = 'test/vectors/e2e-v2.json';
 const OUT = path.join(ROOT, OUT_REL);
 

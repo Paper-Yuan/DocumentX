@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🔒 Fixed — LAN exposure, credential entropy and version drift
 
 Each item below was checked against the code before being changed, and the hub-side changes are
-covered by `test_encryption_e2e.js` and `test_qr_and_security.js`.
+covered by `test/e2e/encryption_e2e.js` and `test/e2e/qr_and_security.js`.
 
 - **The hub's pairing PIN now comes from the CSPRNG.** It was drawn from `Math.random()` in three
   places in `server.js` — V8's predictable xorshift128+ stream — while the Android side had already
@@ -94,7 +94,7 @@ still carried a valid tag per chunk.
   bytes it wrote and nothing more, so a `.part` left behind by an earlier attempt at the same task
   id — which survives a hub restart, since only the bookkeeping lived in memory — would have had its
   stale tail renamed into the vault along with the new content. The `.part` is now cut to the
-  derived size before the rename, and `test_encryption_e2e.js` fails if that ever regresses.
+  derived size before the rename, and `test/e2e/encryption_e2e.js` fails if that ever regresses.
 - **Two first chunks of the same task no longer fight over creating the file.** Both used to find
   no `.part`, both asked the filesystem to create it, and the loser's `EEXIST` was treated as a
   storage failure that deleted the winner's in-flight file. It now just reopens.
@@ -134,7 +134,7 @@ ends drifted apart in the first place.
 - **`protocol.json` is the single source of truth** for the protocol marker, key/nonce/tag lengths,
   the five AAD and HKDF templates, the pairing and session limits, chunk ceilings, the port numbers
   and every transfer header name. `node scripts/protocol.js gen` writes
-  `computer-design/desktop_hub/protocol.gen.js` and `core/crypto/ProtocolConst.kt`; `check` fails on
+  `apps/desktop/desktop_hub/protocol.gen.js` and `core/crypto/ProtocolConst.kt`; `check` fails on
   drift. The browser portal has to stay a single self-contained file, so its literals are asserted
   against the contract rather than imported, and the check also verifies the Android copy of
   `portal.html` is byte-identical to the hub's, that no file spells a header the contract does not
@@ -145,7 +145,7 @@ ends drifted apart in the first place.
   byte — including the ten negative cases (geometry rewrites, tag flip, ciphertext change, nonce
   swap).
 - **A real test suite for the parts that had none.** `node --test "test/*.test.js"` runs 23 tests
-  over the crypto protocol and the relay guard, and `test_encryption_e2e.js` grew from 37 to 60
+  over the crypto protocol and the relay guard, and `test/e2e/encryption_e2e.js` grew from 37 to 60
   checks — including one that extracts the portal's `SafeDropCrypto` from `portal.html`, executes
   it verbatim in Node against the live hub, and uploads a 21-chunk file at a 64-byte stride; a
   section that races two chunks against each other; and one that proves an unpaired host can

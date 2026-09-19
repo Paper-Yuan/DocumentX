@@ -124,22 +124,22 @@ SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有�
 ### Windows 单文件安装包
 
 ```bash
-node computer-design/installer/build_installer.js
+node apps/desktop/installer/build_installer.js
 ```
 
 产物：`set/SafeDrop-Setup.exe`（约 34 MB，自带 Node 运行时，目标机无需预装环境）。
 
-构建流程为"发现模块 → 校验依赖 → 压缩载荷 → 编译安装器"，其中**依赖校验会让缺失模块的构建直接失败**——因为这类问题只会在用户安装后才暴露（表现为启动即 `MODULE_NOT_FOUND`）。打包细节见 [installer/README.md](./computer-design/installer/README.md)。
+构建流程为"发现模块 → 校验依赖 → 压缩载荷 → 编译安装器"，其中**依赖校验会让缺失模块的构建直接失败**——因为这类问题只会在用户安装后才暴露（表现为启动即 `MODULE_NOT_FOUND`）。打包细节见 [installer/README.md](./apps/desktop/installer/README.md)。
 
 ### Android APK
 
 ```bash
-cd android-design/com
+cd apps/android/com
 gradlew.bat assembleRelease     # 输出 app/build/outputs/apk/release/app-release.apk
 cd .. && node pack_apk.js       # 归档为 SafeDrop-release.apk
 ```
 
-**发布签名**：release 构建会读取 `android-design/com/keystore.properties`（已在 `.gitignore` 中），或 `SAFEDROP_KEYSTORE_FILE` / `SAFEDROP_KEYSTORE_PASSWORD` / `SAFEDROP_KEY_ALIAS` / `SAFEDROP_KEY_PASSWORD` 环境变量：
+**发布签名**：release 构建会读取 `apps/android/com/keystore.properties`（已在 `.gitignore` 中），或 `SAFEDROP_KEYSTORE_FILE` / `SAFEDROP_KEYSTORE_PASSWORD` / `SAFEDROP_KEY_ALIAS` / `SAFEDROP_KEY_PASSWORD` 环境变量：
 
 ```properties
 storeFile=C:/path/to/release.jks
@@ -153,7 +153,7 @@ keyPassword=...
 ### Tauri 桌面外壳（MSI / NSIS）
 
 ```bash
-cd computer-design/tauri-app
+cd apps/desktop/tauri-app
 npx tauri build
 ```
 
@@ -166,7 +166,7 @@ npx tauri build
 ### 桌面端（Windows）
 
 ```bash
-cd computer-design/tauri-app
+cd apps/desktop/tauri-app
 npm install
 npx tauri dev        # 开发模式
 npx tauri build      # 打包
@@ -175,7 +175,7 @@ npx tauri build      # 打包
 若只想运行后端与 UI，不经过 Tauri 外壳：
 
 ```bash
-node computer-design/desktop_hub/server.js
+node apps/desktop/desktop_hub/server.js
 # 打开 http://127.0.0.1:8899
 ```
 
@@ -194,7 +194,7 @@ node computer-design/desktop_hub/server.js
 ### Android 端
 
 ```bash
-cd android-design/com
+cd apps/android/com
 ./gradlew assembleDebug
 ```
 
@@ -243,7 +243,7 @@ SafeDrop 的定位是**局域网内的加密传输**：载荷已加密，但配�
 
 ### 关于自签名证书
 
-hub 会为门户自动生成一张自签名证书（保存在 `computer-design/desktop_hub/tls/`），因此浏览器首次访问会提示证书不受信任。这是预期行为：**该证书只提供传输加密，不提供身份认证**；对端的真实身份由配对 PIN 与握手 HMAC 保证，所以即便有人做了中间人替换证书，拿不到 PIN 也无法解出会话密钥。
+hub 会为门户自动生成一张自签名证书（保存在 `apps/desktop/desktop_hub/tls/`），因此浏览器首次访问会提示证书不受信任。这是预期行为：**该证书只提供传输加密，不提供身份认证**；对端的真实身份由配对 PIN 与握手 HMAC 保证，所以即便有人做了中间人替换证书，拿不到 PIN 也无法解出会话密钥。
 
 **使用建议**：避免在公共 Wi-Fi 或不受信任的网络上使用；如需跨不可信链路传输，请等待中继/持久信任功能，或自行叠加 VPN。
 
@@ -306,7 +306,7 @@ hub 会为门户自动生成一张自签名证书（保存在 `computer-design/d
 
 ```
 DocumentX/
-├── computer-design/
+├── apps/desktop/
 │   ├── tauri-app/              # Tauri 2.0 外壳（托盘、全局快捷键）
 │   ├── desktop_hub/
 │   │   ├── server.js           # HTTP/HTTPS + UDP 后端（仅标准库）
@@ -320,7 +320,7 @@ DocumentX/
 │   │       ├── app.js          # 前端逻辑（队列、分块、压缩）
 │   │       └── style.css       # 主题系统
 │   └── installer/              # Windows 安装包构建脚本
-├── android-design/com/app/src/main/java/com/safedrop/mobile/
+├── apps/android/com/app/src/main/java/com/safedrop/mobile/
 │   ├── core/
 │   │   ├── crypto/CryptoEngine.kt        # 加解密实现（已接入传输链路）
 │   │   ├── network/                      # 发现、HTTP 客户端
@@ -370,19 +370,19 @@ node --test "test/*.test.js"            # 加密层与 SSRF 防护的单元测�
 
 # 传输加密端到端（起真实 hub 进程：配对、加解密、丢块/重放/提前定稿拒绝、
 # 限流、手机→手机中继、HTTPS 门户、以及直接执行 portal.html 里的浏览器加密代码）
-node test_encryption_e2e.js
+node test/e2e/encryption_e2e.js
 
 # 中继目标与路径处理
-node test_qr_and_security.js
-node test_multi_device_and_portal.js
+node test/e2e/qr_and_security.js
+node test/e2e/multi_device_and_portal.js
 
 # UI / 交互（以源码字符串断言为主，不能证明行为，只算回归提示）
-node test_theme_and_device_display.js
-node test_scrollbar_and_copy_features.js
-node test_new_chat_and_layout_features.js
+node test/e2e/theme_and_device_display.js
+node test/e2e/scrollbar_and_copy_features.js
+node test/e2e/new_chat_and_layout_features.js
 ```
 
-Android 侧加密单元测试：`android-design/com/app/src/test/java/com/safedrop/mobile/CryptoEngineTest.kt`。它读取与 Node 同一份 `test/vectors/e2e-v2.json`，逐项核对模板拼接结果、AAD 字节、双向证明与每个密封分块的解密，因此任何一端单方面改动协议都会在一侧红掉。运行：`cd android-design/com && ./gradlew.bat testDebugUnitTest --offline`。
+Android 侧加密单元测试：`apps/android/com/app/src/test/java/com/safedrop/mobile/CryptoEngineTest.kt`。它读取与 Node 同一份 `test/vectors/e2e-v2.json`，逐项核对模板拼接结果、AAD 字节、双向证明与每个密封分块的解密，因此任何一端单方面改动协议都会在一侧红掉。运行：`cd apps/android/com && ./gradlew.bat testDebugUnitTest --offline`。
 
 CI 两侧都跑：`test-desktop` 执行上面前三条契约/单元测试加三个起真实 hub 的端到端套件，`test-android` 执行上面那条 Gradle 单元测试并上传报告。
 

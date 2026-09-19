@@ -22,7 +22,7 @@ jobs:
     - name: Syntax check every backend and UI script
       run: |
         node --version
-        for file in computer-design/desktop_hub/*.js computer-design/desktop_hub/public/*.js scripts/*.js; do
+        for file in apps/desktop/desktop_hub/*.js apps/desktop/desktop_hub/public/*.js scripts/*.js; do
           node --check "$file"
         done
 
@@ -35,13 +35,13 @@ jobs:
       run: node --test test/*.test.js
 
     - name: Run the transport encryption end-to-end suite
-      run: node test_encryption_e2e.js
+      run: node test/e2e/encryption_e2e.js
 
     - name: Run the relay and portal security suite
-      run: node test_qr_and_security.js
+      run: node test/e2e/qr_and_security.js
 
     - name: Run the multi-device and portal suite
-      run: node test_multi_device_and_portal.js
+      run: node test/e2e/multi_device_and_portal.js
         
   test-android:
     name: Test Android
@@ -71,7 +71,7 @@ jobs:
     # That only holds while CI actually runs them, which is the whole point of this job.
     - name: Run the crypto unit tests against the shared golden vectors
       timeout-minutes: 25
-      working-directory: android-design/com
+      working-directory: apps/android/com
       run: gradle --no-daemon testDebugUnitTest
 
     - name: Upload the test report
@@ -79,7 +79,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: android-unit-tests
-        path: android-design/com/app/build/test-results/testDebugUnitTest/*.xml
+        path: apps/android/com/app/build/test-results/testDebugUnitTest/*.xml
         if-no-files-found: error
         
   lint-kotlin:
@@ -91,7 +91,7 @@ jobs:
     
     - name: Check Kotlin files exist
       run: |
-        find android-design -name "*.kt" -type f | head -5
+        find apps/android -name "*.kt" -type f | head -5
         echo "✅ Kotlin source files found"
         
   check-docs:

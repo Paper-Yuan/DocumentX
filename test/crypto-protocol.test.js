@@ -15,7 +15,7 @@ const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const PROTO = require(path.join(ROOT, 'computer-design/desktop_hub/crypto_protocol'));
+const PROTO = require(path.join(ROOT, 'apps/desktop/desktop_hub/crypto_protocol'));
 const VECTORS = require(path.join(ROOT, 'test/vectors/e2e-v2.json'));
 const SPEC = require(path.join(ROOT, 'protocol.json'));
 

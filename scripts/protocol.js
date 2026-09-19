@@ -30,22 +30,22 @@ const D = SPEC.discovery;
 const T = SPEC.transport;
 
 const TARGETS = {
-  node: 'computer-design/desktop_hub/protocol.gen.js',
-  kotlin: 'android-design/com/app/src/main/java/com/safedrop/mobile/core/crypto/ProtocolConst.kt'
+  node: 'apps/desktop/desktop_hub/protocol.gen.js',
+  kotlin: 'apps/android/com/app/src/main/java/com/safedrop/mobile/core/crypto/ProtocolConst.kt'
 };
 
 /** Browser files that carry hand-written copies of the contract, and how they spell it. */
 const BROWSER_COPIES = [
-  'computer-design/desktop_hub/public/app.js',
-  'computer-design/desktop_hub/public/portal.html',
-  'android-design/com/app/src/main/assets/portal.html'
+  'apps/desktop/desktop_hub/public/app.js',
+  'apps/desktop/desktop_hub/public/portal.html',
+  'apps/android/com/app/src/main/assets/portal.html'
 ];
 
 /** The one implementation that reads the headers rather than sending them. */
-const HEADER_USER = 'computer-design/desktop_hub/server.js';
+const HEADER_USER = 'apps/desktop/desktop_hub/server.js';
 
 /** Documents that state which wire protocol is in force, so they cannot drift from the code. */
-const DOC_FILES = ['README.md', 'android-design/README.md'];
+const DOC_FILES = ['README.md', 'apps/android/README.md'];
 
 const BROWSER_VARS = {
   protocol: '${PROTOCOL}',
@@ -208,9 +208,9 @@ function generate() {
 
 /** Where each browser copy states its upload slice size, and which tuning key it must match. */
 const CHUNK_LITERAL_SITES = {
-  'computer-design/desktop_hub/public/app.js': 'desktop',
-  'computer-design/desktop_hub/public/portal.html': 'portal',
-  'android-design/com/app/src/main/assets/portal.html': 'portal'
+  'apps/desktop/desktop_hub/public/app.js': 'desktop',
+  'apps/desktop/desktop_hub/public/portal.html': 'portal',
+  'apps/android/com/app/src/main/assets/portal.html': 'portal'
 };
 
 function chunkLiteral(bytes) {
@@ -276,8 +276,8 @@ function checkBrowserCopies() {
 }
 
 function checkDuplicatedPortal() {
-  const desktop = path.join(ROOT, 'computer-design/desktop_hub/public/portal.html');
-  const apk = path.join(ROOT, 'android-design/com/app/src/main/assets/portal.html');
+  const desktop = path.join(ROOT, 'apps/desktop/desktop_hub/public/portal.html');
+  const apk = path.join(ROOT, 'apps/android/com/app/src/main/assets/portal.html');
   if (fs.readFileSync(desktop, 'utf8') !== fs.readFileSync(apk, 'utf8')) {
     fail('public/portal.html and the APK asset copy differ; the phone serves a different portal than the desktop');
   }

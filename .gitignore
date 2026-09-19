@@ -51,19 +51,19 @@ package-lock.json
 .release-notes-*.md
 
 # Generated TLS material for the local HTTPS portal (machine-specific private key)
-computer-design/desktop_hub/tls/
-computer-design/desktop_hub/temp_transfers/
+apps/desktop/desktop_hub/tls/
+apps/desktop/desktop_hub/temp_transfers/
 
 # Android release signing material — must never be committed
-android-design/com/keystore.properties
+apps/android/com/keystore.properties
 *.jks
 *.keystore
 
 # Installer build intermediates
-computer-design/installer/build_staging/
-computer-design/installer/payload.zip
-computer-design/installer/SafeDrop.exe
-computer-design/installer/uninstall.exe
+apps/desktop/installer/build_staging/
+apps/desktop/installer/payload.zip
+apps/desktop/installer/SafeDrop.exe
+apps/desktop/installer/uninstall.exe
 
 # OS and Editor specific
 .DS_Store
@@ -83,3 +83,6 @@ Desktop.ini
 # repo's gate behaviour stays at the plugin default rather than carrying one machine's
 # relaxation into every clone.
 .mimosa/
+
+# Local hub settings: the vault directory is machine-specific and must never be committed.
+apps/desktop/desktop_hub/config.json

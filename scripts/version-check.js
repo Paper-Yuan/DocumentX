@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const SOURCE_OF_TRUTH = 'computer-design/desktop_hub/server.js';
+const SOURCE_OF_TRUTH = 'apps/desktop/desktop_hub/server.js';
 
 const results = [];
 let declared = null;
@@ -75,29 +75,29 @@ console.log(`SafeDrop version check - source of truth ${SOURCE_OF_TRUTH} = ${dec
 
 checkAll(SOURCE_OF_TRUTH, 'hub APP_VERSION', new RegExp(`const APP_VERSION = '(${SEMVER})'`), V());
 
-checkAll('computer-design/tauri-app/package.json', 'npm package version', new RegExp(`"version": "(${SEMVER})"`), V());
-checkAll('computer-design/tauri-app/src-tauri/tauri.conf.json', 'Tauri config version', new RegExp(`"version": "(${SEMVER})"`), V());
-checkAll('computer-design/tauri-app/src-tauri/Cargo.toml', 'crate version', new RegExp(`^version = "(${SEMVER})"`, 'm'), V());
+checkAll('apps/desktop/tauri-app/package.json', 'npm package version', new RegExp(`"version": "(${SEMVER})"`), V());
+checkAll('apps/desktop/tauri-app/src-tauri/tauri.conf.json', 'Tauri config version', new RegExp(`"version": "(${SEMVER})"`), V());
+checkAll('apps/desktop/tauri-app/src-tauri/Cargo.toml', 'crate version', new RegExp(`^version = "(${SEMVER})"`, 'm'), V());
 checkAll(
-  'computer-design/tauri-app/src-tauri/Cargo.lock',
+  'apps/desktop/tauri-app/src-tauri/Cargo.lock',
   'crate version in lockfile',
   new RegExp(`name = "safedrop-desktop",?\\r?\\nversion = "(${SEMVER})"`),
   V()
 );
 
-checkAll('android-design/com/app/build.gradle', 'Android versionName', new RegExp(`versionName "(${SEMVER})"`), V());
+checkAll('apps/android/com/app/build.gradle', 'Android versionName', new RegExp(`versionName "(${SEMVER})"`), V());
 {
-  const m = read('android-design/com/app/build.gradle').match(/versionCode (\d+)/);
-  record('android-design/com/app/build.gradle', 'Android versionCode', !!m, m ? `versionCode ${m[1]} (must increase on every release)` : 'versionCode not found');
+  const m = read('apps/android/com/app/build.gradle').match(/versionCode (\d+)/);
+  record('apps/android/com/app/build.gradle', 'Android versionCode', !!m, m ? `versionCode ${m[1]} (must increase on every release)` : 'versionCode not found');
 }
 
-for (const cs of ['Launcher.cs', 'computer-design/installer/Installer.cs', 'computer-design/installer/Uninstaller.cs']) {
+for (const cs of ['apps/desktop/installer/Launcher.cs', 'apps/desktop/installer/Installer.cs', 'apps/desktop/installer/Uninstaller.cs']) {
   checkAll(cs, 'AssemblyVersion', new RegExp(`AssemblyVersion\\("(${SEMVER})\\.0"\\)`), V());
   checkAll(cs, 'AssemblyFileVersion', new RegExp(`AssemblyFileVersion\\("(${SEMVER})\\.0"\\)`), V());
   checkAll(cs, 'AssemblyInformationalVersion', new RegExp(`AssemblyInformationalVersion\\("(${SEMVER})"\\)`), V());
 }
 
-checkAll('computer-design/installer/Installer.cs', 'ARP DisplayVersion', new RegExp(`SetValue\\("DisplayVersion", "(${SEMVER})"\\)`), V());
+checkAll('apps/desktop/installer/Installer.cs', 'ARP DisplayVersion', new RegExp(`SetValue\\("DisplayVersion", "(${SEMVER})"\\)`), V());
 
 checkAll('CHANGELOG.md', 'latest released changelog section', new RegExp(`^## \\[(${SEMVER})\\]`, 'm'), V(), true);
 
@@ -121,7 +121,7 @@ console.log(`\n${results.length - failed}/${results.length} checks agree on ${de
 if (failed > 0) {
   console.log(
     `\n${failed} mismatch(es). Fix the copies, or update scripts/version-check.js if a checked\n` +
-      `location genuinely stopped existing. The Android Flutter tree (computer-design/com/) is\n` +
+      `location genuinely stopped existing. The Android Flutter tree (apps/desktop/com/) is\n` +
       `deliberately not checked: it is unbuilt legacy slated for removal.`
   );
   process.exit(1);

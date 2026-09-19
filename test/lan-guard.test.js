@@ -10,7 +10,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const guard = require(path.join(ROOT, 'computer-design/desktop_hub/lan_guard'));
+const guard = require(path.join(ROOT, 'apps/desktop/desktop_hub/lan_guard'));
 
 test('ipv4ToUint accepts only the canonical dotted-quad form', () => {
   assert.strictEqual(guard.ipv4ToUint('0.0.0.0'), 0);
@@ -81,7 +81,7 @@ test('an on-link destination is allowed because that is what a LAN peer looks li
 
 test('the operator allowlist is honoured and cannot be bypassed with an unlisted address', () => {
   const out = execFileSync(process.execPath, ['-e', `
-    const guard = require(${JSON.stringify(path.join(ROOT, 'computer-design/desktop_hub/lan_guard'))});
+    const guard = require(${JSON.stringify(path.join(ROOT, 'apps/desktop/desktop_hub/lan_guard'))});
     console.log(JSON.stringify({
       listed: guard.isAllowedRelayTarget('203.0.113.77'),
       otherPublic: guard.isAllowedRelayTarget('203.0.113.78'),
