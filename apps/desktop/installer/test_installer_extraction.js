@@ -20,7 +20,8 @@ function it(desc, fn) {
 }
 
 const INSTALLER_DIR = __dirname;
-const ROOT_DIR = path.resolve(__dirname, '..', '..');
+// The installer lives three levels below the repository root: apps/desktop/installer.
+const ROOT_DIR = path.resolve(__dirname, '..', '..', '..');
 const setupExePath = path.join(ROOT_DIR, 'set', 'SafeDrop-Setup.exe');
 
 // 1. Physical existence & size in set folder

@@ -1,8 +1,17 @@
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 console.log('=== Testing SafeDrop Multi-Device & Web Portal Features ===\n');
 
+// Without this the hub reads the repository's own config.json, whose vault is the developer's
+// real Downloads folder, and every run of this suite leaves another portal_test(N).txt behind
+// there. A scratch vault keeps the side effects where they can be thrown away.
+const VAULT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'safedrop-multi-vault-'));
+fs.writeFileSync(path.join(VAULT_DIR, 'config.json'), JSON.stringify({ downloadDir: VAULT_DIR }));
 process.env.PORT = '9977';
+process.env.SAFEDROP_CONFIG = path.join(VAULT_DIR, 'config.json');
 require('../../apps/desktop/desktop_hub/server.js');
 
 setTimeout(async () => {

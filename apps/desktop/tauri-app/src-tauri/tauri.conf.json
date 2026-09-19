@@ -42,7 +42,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http: ws:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' http: ws:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'"
     },
     "trayIcon": {
       "iconPath": "icons/icon.png",

@@ -34,6 +34,14 @@ jobs:
     - name: Run unit tests
       run: node --test test/*.test.js
 
+    # Section 8 of the transport suite relays a chunk to an address that is not the hub's own.
+    # A single-NIC runner has no such address, and the section would skip - which is how the
+    # relay path ends up untested while CI still looks green. Give the runner one instead.
+    - name: Give the runner a second local address for the relay test
+      run: |
+        sudo ip -4 addr add 192.168.250.1/24 dev lo
+        ip -4 addr show dev lo | grep -q 192.168.250.1
+
     - name: Run the transport encryption end-to-end suite
       run: node test/e2e/encryption_e2e.js
 
@@ -42,6 +50,15 @@ jobs:
 
     - name: Run the multi-device and portal suite
       run: node test/e2e/multi_device_and_portal.js
+
+    # These three guard the design contract itself - no remote fonts, no gradient chrome, every
+    # theme defining the same token set - so a future pass cannot quietly reintroduce the
+    # template look that this rebuild spent itself removing.
+    - name: Run the interface contract suites
+      run: |
+        node test/e2e/theme_and_device_display.js
+        node test/e2e/new_chat_and_layout_features.js
+        node test/e2e/scrollbar_and_copy_features.js
         
   test-android:
     name: Test Android

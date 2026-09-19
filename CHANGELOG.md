@@ -221,6 +221,59 @@ and nothing else**. It was not only taste — the old look had real defects behi
   shrink and the chips wrap onto a second line.
 - The drop zone said "选择文件" twice — as the heading and as the button.
 
+### 🔧 Changed — Repository layout, and tests that guard the design instead of the pixels
+
+- **Layout.** `computer-design/` → `apps/desktop/`, `android-design/` → `apps/android/`,
+  `Launcher.cs` → `apps/desktop/installer/`, and the six root `test_*.js` scripts →
+  `test/e2e/`. The root now holds `LICENSE`, `README`, `CHANGELOG`, `SECURITY`, `protocol.json`
+  and four directories.
+- **A dead implementation is gone.** `computer-design/com/` was a complete Flutter desktop app -
+  55 tracked files, 109 MB with its build caches - that nothing referenced and the README never
+  mentioned, while the shipping desktop client is Tauri. It read as "which desktop app is real?".
+  Deleted; the git history keeps it.
+- **Seven internal progress reports** (~4,600 lines of `OPTIMIZATION_*`, `WEEK2_*`, `V1.1.0_*`)
+  moved to `docs/archive/` with a note saying they describe no current behaviour. Their old paths
+  were deliberately not rewritten inside them - that would have made documents from an earlier
+  layout claim to be current.
+- **`SECURITY.md`** now states the reporting channel and the boundaries in one place, and
+  `CONTRIBUTING.md` states the rules a change has to satisfy (protocol marker bumps, the
+  zero-dependency backend, the byte-identical portal copies).
+- **Two files that should never have been tracked.** `desktop_hub/config.json` held one
+  developer's absolute Downloads path and is now ignored. `Launcher.cs` fell back to the literal
+  `e:\Workbox\DocumentX\...` when the installed layout was missing - that string was compiled into
+  every installer built from this file.
+- **The interface suites test the contract, not the colour values.** `theme_and_device_display`,
+  `new_chat_and_layout_features` and `scrollbar_and_copy_features` used to pin hex literals from
+  the pre-redesign stylesheet, so they went red the moment the design changed and taught people to
+  ignore red. They now assert the properties that matter: the three themes must define the same
+  token set, the themes the UI offers must match the themes the CSS paints, **no UI file may fetch
+  a font or any other resource over the network**, the primary control may not be painted with a
+  gradient or a glow, a colour outside a token block is debt and the debt list may only shrink, and
+  the scrollbar thumb must be visible against its own track. They run in CI now. Verified by
+  sabotage rather than by trust: re-adding a Google Fonts link, re-adding the indigo→violet
+  gradient, and deleting a token from one theme each make them fail, with the right message.
+- **The relay test can no longer silently disappear.** Section 8 of the transport suite needs a
+  destination that is not the hub's own address. On a single-NIC machine it used to fail; it now
+  reports a counted, named skip - and CI gives the runner a second address instead, so the relay
+  path is genuinely executed there rather than skipped into a green tick.
+- **Two suites stopped writing into the developer's real Downloads folder.** They started the hub
+  without a config override, so every run of the multi-device suite left another
+  `portal_test (N).txt` in whatever vault the local config pointed at. Each now gets a scratch
+  vault in the system temp directory.
+
+### 🐛 Fixed — Small things the layout move and the redesign left behind
+
+- `build_installer.js` and `test_installer_extraction.js` computed the repository root as two
+  levels above the installer; after the move that resolved to `apps/`, so the installer build
+  looked for its hub payload at `apps/apps/desktop/desktop_hub`. The Android golden-vector test had
+  the same class of bug with a hardcoded `../../../`; it now walks up until it finds the vectors,
+  so moving a module cannot disconnect the cross-end contract test again.
+- Selecting your own chat message on Android showed no mark at all: the outgoing bubble's plate and
+  the text highlight were both `raised`, so the highlight painted `raised` over `raised`. It now
+  uses the active hue at an alpha that stays legible on either plate.
+- The Tauri CSP still granted `fonts.googleapis.com` and `fonts.gstatic.com` after the webfonts
+  were deleted. A permission for a resource the app no longer loads is just surface area.
+
 ### Planned
 - Resumable file transfer with breakpoint continuation — the authenticated chunk set and positional
   writes landed above, so only the persisted progress cursor is left

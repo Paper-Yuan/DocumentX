@@ -38,7 +38,14 @@ assert(qr.isDark(1, 1) === false, 'Top-left finder inner separator is light');
 assert(qr.isDark(3, 3) === true, 'Top-left finder center core is dark');
 
 // 2. Start desktop_hub server on test port 9988
+// A scratch vault, so a successful upload in this suite cannot land in whatever directory the
+// developer's own config.json points at.
 process.env.PORT = '9988';
+{
+  const vaultDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'safedrop-sec-vault-'));
+  fs.writeFileSync(path.join(vaultDir, 'config.json'), JSON.stringify({ downloadDir: vaultDir }));
+  process.env.SAFEDROP_CONFIG = path.join(vaultDir, 'config.json');
+}
 require('../../apps/desktop/desktop_hub/server.js');
 
 setTimeout(async () => {

@@ -130,7 +130,11 @@ class ChannelMessageAdapter(
                 binding.cardTextBubble.setCardBackgroundColor(if (msg.isOutgoing) p.raised else p.surface)
                 binding.cardTextBubble.strokeColor = p.hairline
                 binding.tvMessageContent.setTextColor(p.ink)
-                binding.tvMessageContent.highlightColor = p.raised
+                // The highlight has to differ from both plates, or marking text inside an outgoing
+                // bubble paints raised over raised and shows no mark at all. The active hue carries
+                // the "this is selected" meaning, and the alpha keeps the text legible over either
+                // plate in all three themes.
+                binding.tvMessageContent.highlightColor = (p.active and 0x00FFFFFF) or (0x66 shl 24)
                 binding.tvMessageTime.setTextColor(p.inkFaint)
                 return
             }

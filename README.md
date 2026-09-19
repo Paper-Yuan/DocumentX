@@ -10,411 +10,281 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Paper-Yuan/DocumentX/releases/latest">
-    <img src="https://img.shields.io/github/v/release/Paper-Yuan/DocumentX?label=version" alt="Version">
+  <a href="https://github.com/Paper-Yuan/DocumentX/releases/tag/v1.3.0">
+    <img src="https://img.shields.io/github/v/release/Paper-Yuan/DocumentX?label=version" alt="Latest release: v1.3.0">
   </a>
   <a href="https://github.com/Paper-Yuan/DocumentX/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Paper-Yuan/DocumentX" alt="License">
+    <img src="https://img.shields.io/github/license/Paper-Yuan/DocumentX" alt="License: MIT">
   </a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Android%20%7C%20Web-blue" alt="Platform">
-</p>
-
-<p align="center">
-  <a href="#-使用逻辑">使用逻辑</a> •
-  <a href="#-design-highlights">设计特点</a> •
-  <a href="#-quick-start">快速开始</a> •
-  <a href="#-安全模型与边界">安全边界</a> •
-  <a href="#-architecture">架构</a> •
-  <a href="#-roadmap">路线图</a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Android%20%7C%20Web-blue" alt="Platforms">
 </p>
 
 ---
 
-## 🧭 使用逻辑
+## 这是什么，给谁用
 
-SafeDrop 不依赖账号、云端或中转服务器。它的运行模型只有一条主线：
+SafeDrop 是一个局域网文件互传工具，三个端：
 
-**桌面端是 hub，其它设备是接入方。**
+- **Windows 桌面端**：hub。它自己就是一个 HTTP 服务（默认 `8899`）+ HTTPS 门户（`8900`）+ UDP 发现（`8890`），界面、二维码、配对码都由这个服务直出；Tauri 只是外壳（托盘、全局快捷键）。
+- **Android 端**：接入方，也能自己开一个接收服务，让手机直接收另一台手机的文件。
+- **浏览器门户**：桌面端直出的一个页面，任何能开浏览器的设备都能上传 / 下载，不用装东西。
 
-1. **启动桌面端** — 本机同时起一个 HTTP 服务（默认 `8899`）、一个 HTTPS 门户（默认 `8900`）和一个 UDP 发现服务（`8890`）。桌面 UI 与 Web 门户由这些服务直接提供。
-2. **手机 / 浏览器接入** — 桌面端显示二维码与 6 位配对码。手机扫码，或用浏览器打开界面给出的 `https://<局域网IP>:8900/portal`，再用配对码完成一次握手。
-3. **之后就是直连** — 文件在设备之间通过局域网直接传输（每个分块都经 AES-256-GCM 加密），桌面端负责验签与落盘（可自定义保存目录）、展示进度，并在需要时把流量转发给同一网络内的其它设备。
+没有账号、没有云端、没有第三方中继。设备之间在局域网里直连，每个分块用 AES-256-GCM 封装后再走线。当前线协议是 `safedrop-e2e-v2`。
 
-这个模型带来的直接结果是：**没有月费、没有流量上限、断网也照常工作**，代价是它只能在同一个可互通的局域网里使用。
+**适合**：同一个 Wi-Fi / 有线网段内，自己手机和电脑之间、同事之间传文件；不能或不想让文件经过外网的场合；断网环境。
 
-> English: The desktop app is the hub. It serves the UI, the HTTPS web portal, and the discovery service. A phone or browser joins by scanning a QR code and entering a rotating pairing code; transfers are then sealed per chunk with AES-256-GCM over the local network.
+**不适合**：跨网络或公网传输（做不到，代码里没有中继服务）；需要强身份认证的场合（配对码只有 6 位数字，见「安全边界」）；把 hub 长期开着暴露在你不控制的网络里。
 
----
-
-## 🎨 Design Highlights
-
-这些是当前代码里真实存在、且经过验证的设计点：
-
-- **零配置发现** — 桌面端每 3 秒向本网段定向广播地址发送 UDP beacon，手机端通过 `MulticastLock` 接收；同时过滤 Clash / TAP / TUN / vEthernet 等虚拟网卡，避免多网卡环境下出现幻影设备。
-- **无需安装的接入端** — Web 门户是服务端直出的一个页面，手机、平板、Mac、Linux、智能电视只要能开浏览器就能收发文件，不需要装任何东西（前提是走 `https://` 并接受自签名证书，见「安全边界」）。
-- **后端零依赖** — 只用 Node.js 标准库（`http`/`https`/`dgram`/`crypto`/`zlib`），没有 `node_modules`，启动快、体积小、审计面窄。
-- **端到端载荷加密** — 每个分块以 AES-256-GCM 封装，随机 96 位 nonce，并把 task id、分块序号、总块数与发送端步长一起作为 AAD 绑定：跨文件拼接、改动内容、改动序号、以及改写"这份文件一共几块"来提前定稿都会被认证拒掉。
-- **手机直连手机** — 手机之间由发送方直接与目标协商会话，hub 只转发密文，因此即便经过桌面端中转，内容对 hub 也不可见。
-- **配对凭据不上网** — PIN / token 只在本机作为 HKDF 输入，通过 HMAC 双向证明密钥一致，被动抓包者拿不到密钥（但 6 位 PIN 的熵有限，边界见下节）。
-- **分块传输与重组** — 每个分块按 `序号 × 步长` 定位写入 `.part`，收齐认证过的全部块才改名落盘；整个文件不会一次性读进内存，但每个分块是在内存里解密的，峰值内存与分块大小和并发数成正比。桌面端步长 4 MB，Android 端与 Web 门户 1 MB（这个不一致是已知待办，步长本身已进 AAD，所以两端不同不会破坏认证）。
-- **传输队列与并发** — 最多 3 个文件并发传输，其余进入队列，UI 上显示队列位置，单个任务失败不影响其它任务。
-- **可选的 gzip 压缩** — 对文本类、体积 ≥ 1 MB 的常见可压缩格式自动启用（客户端 `CompressionStream`，服务端 `zlib` 解压），可在设置里关闭。
-- **自签名 HTTPS 门户** — 纯 Node 生成并缓存 P-256 自签名证书（含 IP SAN），让浏览器进入安全上下文，从而能使用 WebCrypto 加密上传。
-- **桌面端原生化** — 外壳用 Tauri 2.0（Rust + WebView2），带系统托盘（显示 / 隐藏 / 退出带确认）和 3 个全局快捷键，窗口关闭后仍可在后台响应。
-- **Android 后台传输** — 前台服务（`foregroundServiceType="dataSync"`）+ WakeLock + 心跳，抵御 LMK 与厂商省电策略；首次传输会引导用户关闭电池优化。
-- **设备命名可持久** — 设备身份取自公钥的 SHA-256 指纹，自定义名称按指纹保存并跨网络同步，换 IP 或重连不会丢名字。
-- **界面细节** — Canvas 雷达图展示设备拓扑，3 套主题（深色 / 浅色 / 护眼），自适应刘海与手势条，主题化滚动条。
+**发布状态**：v1.3.0 是唯一带安装包的 release，而它说的是 `safedrop-e2e-v1`，与当前 `main`（v2）**不互通**——`git show v1.3.0:computer-design/desktop_hub/crypto_protocol.js` 里就是这个常量。要用当前协议的完整行为，请从源码跑。
 
 ---
 
-## ✨ 功能
+## 30 秒上手
 
-### 设备发现
-- 桌面端每 3 秒 UDP beacon（`8890`）+ 网段定向广播，Android 端主动监听
-- HTTP `announce` 端点补充上报，设备信息含 ID、IP、名称、指纹
-- 排除虚拟网卡，避免同一台机器出现多条记录
+需要 Node.js。CI 的桌面 job 固定在 Node 22（版本检查那个 job 是 20）。本文标了"实测"的数字都是 2026-09-19 在 Windows / Node 24.19.0 上跑出来的；没跑过的命令会写明。桌面后端不需要 `npm install`——它没有第三方依赖。
 
-### 文件传输
-- 手机 → 桌面：分块上传至 `/api/v1/transfer/upload`
-- 桌面 → 手机：从桌面文件库下载（`files/list`、`files/download`）
-- 手机 ↔ 手机：发送方先与目标手机直接协商会话并加密，再由桌面 hub 按目标地址转发密文（`x-target-ip`）；hub 只校验中继目标合法性，不持有该会话密钥
-- 上传完成后写入桌面保存目录，文件名做非法字符清洗与重名去重
+```bash
+git clone https://github.com/Paper-Yuan/DocumentX.git
+cd DocumentX
 
-### 即时消息
-- 设备之间可直接发文本消息，与文件记录一起呈现在同一会话流里
+# 1) 起 hub（端口被占用会直接 EADDRINUSE 报错，先确认 8899 空闲）
+node apps/desktop/desktop_hub/server.js
+# 打开 http://127.0.0.1:8899 —— 界面、二维码、6 位配对码都在这页
+```
 
-### 设置项
-- 自动接收开关、压缩开关、PIN 手动刷新、保存目录自定义并从界面直接打开
-- 设备名称管理器（指纹 → 自定义名称）
+```bash
+# 2) 验证传输加密真的在工作：它自己起一个 hub，端口按进程号算（17000+），不占 8899
+node test/e2e/encryption_e2e.js          # 60 项断言，实测全部通过
+```
+
+```bash
+# 3) Android（不需要连手机或模拟器就能跑密码学单测）
+cd apps/android/com
+./gradlew.bat testDebugUnitTest          # 14 项，读的是与 Node 同一份 test/vectors/e2e-v2.json
+./gradlew.bat assembleDebug              # 产物 app/build/outputs/apk/debug/app-debug.apk
+```
+
+配对：手机端扫码或输 6 位码；浏览器打开 hub 界面上给出的 `https://<局域网IP>:8900/portal` 并接受自签名证书。用 `http://…:8899/portal` 打开时页面会拒绝配对，不会静默走明文。
 
 ---
 
-## 📥 Download
+## 现在能用什么
 
-前往 [Releases](https://github.com/Paper-Yuan/DocumentX/releases/latest) 下载：
+分成三档，差别很大：第一档有会失败的行为测试，第二档只是代码存在且能编译，第三档没有。
+
+### 一 · 已实现，并且有自动化测试盯住
+
+下面每一条都对应上面某个套件里的断言，不是"看代码觉得没问题"。
+
+| 能力 | 实现位置 | 覆盖它的测试 |
+|:---|:---|:---|
+| 配对握手（临时 X25519 → HKDF-SHA256 会话密钥，双向 HMAC 证明） | `desktop_hub/crypto_protocol.js` | `encryption_e2e.js` Section 2 |
+| 分块封装：`nonce(12) ‖ ciphertext ‖ tag(16)`，AAD 绑 `taskId/序号/总块数/步长` | 同上 + `portal.html` + `CryptoEngine.kt` | `node --test test/*.test.js`、Kotlin 14 项 |
+| 收齐**认证过的**完整块集合才改名落盘；块按 `序号 × 步长` 定位写，重排不影响结果 | `server.js`、`MobileTransferServer.kt` | `encryption_e2e.js` Section 3 / 11 |
+| 拒绝改写几何参数（改总块数提前定稿、改步长、越界块大小、tag 翻转、换 nonce、跨会话搬运） | 同上 | `encryption_e2e.js` Section 4 + `test/vectors/e2e-v2.json` 的 7 个反例 |
+| 未配对不能读写：文件列表、下载、消息、设备名一律 401；带 `X-Encrypted` 却无会话 → 400；明文上传只对本机回环开放 | `server.js` | `encryption_e2e.js` Section 6、`qr_and_security.js` |
+| 配对凭据不上网（PIN/token 只作 HKDF 输入），仅向本机回环下发；换码宽限期最多 3 代 / 60 秒 | `server.js` | `encryption_e2e.js` Section 1 / 5 |
+| 配对限流：同一来源 8 次失败封 5 分钟 | `server.js` | `encryption_e2e.js` Section 7 |
+| 手机↔手机：hub 只转发密文、不持有该会话密钥 | `server.js` + `DesktopHubClient.kt` | `encryption_e2e.js` Section 8、`CryptoEngineTest.kt` |
+| 中继目标校验（RFC1918 或本机同网段放行，回环 / 链路本地 / 公网拒绝，只收规范点分十进制） | `desktop_hub/lan_guard.js` | `node --test`（`lan-guard.test.js`）、`qr_and_security.js` |
+| 自签名 HTTPS 门户（纯 Node 生成 P-256 证书，带 IP SAN），门户内的浏览器加密代码 | `tls_selfsigned.js`、`public/portal.html` | `encryption_e2e.js` Section 9 / 10（第 10 节真的执行 `portal.html` 里的代码） |
+| HTTP `announce` 上报与多设备共存（含 12 秒过期窗口） | `server.js` | `multi_device_and_portal.js` |
+| 跨端常量一致：`protocol.json` 单一来源，四份实现 + 两份 portal 副本 | `protocol.json`、`scripts/protocol.js` | `node scripts/protocol.js check` |
+| 版本号一致（hub / Tauri 配置 / npm / Cargo.toml / Cargo.lock / Android / 3 个 C# 组件 / CHANGELOG / README，共 11 个文件） | `scripts/version-check.js` | `node scripts/version-check.js` → 19/19 |
+| 安装包载荷完整（后端模块自动收集 + `require()` 依赖校验，缺一即构建失败） | `installer/payload_check.js` | `node apps/desktop/installer/test_payload_check.js` → 11 项 |
+
+### 二 · 已实现，但只有编译或人工验证
+
+这些是真的在跑的产品面，但当前没有能失败的自动化测试覆盖其行为。别把它们当成"已验证"。
+
+- **桌面 UI**：设备列表、传输队列（同时最多 3 个文件，其余排队）、Canvas 雷达、三套主题（深色 / 护眼 / 浅色）、即时消息、收件目录管理与"打开目录"、gzip 压缩开关、失败任务的原地重试。逻辑在 `desktop_hub/public/app.js`（界面自己发的请求会经过第一档里那些被测端点，但点击流本身没测）。
+- **UDP beacon 自发现**（`8890`，每 3 秒定向广播）与手机侧 `MulticastLock` 接收、以及 hub 对 Clash / TAP / TUN / vEthernet 网卡的过滤：代码在（`server.js` 的广播定时器、`getAllLocalIps`，Android 的 `UdpDiscoveryHelper.kt`），但**没有任何一条测试发过或收过一个 beacon**——仓库里连 `dgram` 的测试引用都没有。这条链路只能靠真机看界面确认。
+- **Tauri 外壳**：托盘、3 个全局快捷键、注册失败不阻断启动（`apps/desktop/tauri-app/src-tauri/src/main.rs`）。CI 不构建它，本次也没能在这台机器上跑完 `npx tauri build`，所以当前 `main` 的 Tauri 构建**未经验证**。
+- **Android 端全部行为**：前台服务保活、WakeLock、扫码配对、系统分享入口、分区存储写入、以及手机接收端的定位写入 / CORS / 限流。CI 的 Android job 没有模拟器，只跑 JVM 单元测试，所以这些只是"编译通过 + 加密实现与契约一致"。
+- **Windows 安装包构建本身**：`build_installer.js` 的载荷校验逻辑有单测（第一档最后一行）；脚本自身的目录常量已随重构修正，但**没有跑过一次真实构建**（需要 Inno Setup 与 .NET 编译器），所以"安装包能出"这件事仍只有代码审阅级保证。
+
+### 三 · 计划中（现在代码里没有）
+
+- **断点续传**。地基有了（定位写入 + 只认认证过的块），但发送端无从知道对方已经有哪些块；`server.js` 里的 `transferProgress` / `persistProgress()` / `findMissingChunks()` 是死代码——只有启动时 `loadPersistedProgress()` 被调用，传输过程中既不写也不用。
+- **批量下载（TAR.GZ）**、**带时效的二维码分享链接**。
+- **手机侧 HTTPS 门户**。目前手机只监听 HTTP，所以手机当 hub 时那个网页门户打不开配对。
+- **持久信任设备身份**，免掉每次读码。
+- **macOS / Linux 实机验证**：Tauri 代码是跨平台的，但没人在这两个系统上跑过。
+
+---
+
+## 安全边界
+
+下面是 `SECURITY.md` 的摘要；冲突时以 `SECURITY.md` 为准，因为它更靠近代码。
+
+**给了什么**：每个分块先用 AES-256-GCM 封装再走线，验签通过才落盘；AAD 覆盖 `taskId / 序号 / 总块数 / 步长`，所以"改写一共几块来提前定稿"和"把块挪到别的文件 / 别的位置"都会被认证拒掉（到达顺序本身不在认证范围内，因此不需要它有序）。会话密钥来自每次连接新生成的 X25519 密钥对，配对码不上网、只作 HKDF 输入，双方各自算 HMAC 证明。数据接口要求已验证会话，中继目标过 `lan_guard` 白名单，JSON 请求体上限 4 MB、单个密封分块上限 64 MB。
+
+**没给什么（不要依赖）**：
+
+- **6 位 PIN 不是 PAKE。** 取值空间 90 万个（`100000`–`999999`，约 20 比特）。它作为 HKDF 输入参与派生，因此能在路径上抓到完整握手的攻击者可以离线穷举那 90 万个候选；在线穷举被限流压制。结论：防得住误连和被动窃听，防不住蹲守同一来源的定向攻击，也防不住已知 PIN 的中间人。
+- **拿到同一个 PIN 的 evil-twin hub 检测不出来。** 双向证明只说明"对方知道当前 PIN"，PIN 之外没有身份锚点，指纹要用户自己肉眼比对。
+- **桌面端自身到 hub 之间是明文 HTTP。** 本机回环不加密。同一台机器上的不受信进程能看到这段流量。
+- **Web 门户只有走 HTTPS 才加密。** 浏览器只在安全上下文里暴露 WebCrypto；`http://` 打开时页面直接拒绝配对（不是降级成明文）。手机只提供 HTTP，所以**手机上的网页门户无法完成配对**，它只是个提示页。
+- **限流是抑制，不是阻断。** 每来源 8 次失败封 5 分钟，换地址即可绕过——这是局域网威胁模型下的取舍。
+- **没有持久信任。** 每次接入都要重新读码，会话密钥只存内存。
+- **自签名证书只提供传输加密，不提供身份认证**（身份靠 PIN + 握手 HMAC），所以首次访问的证书警告是预期行为，但别把它当成"已经确认了对端是谁"。
+
+**因此**：不要在公共 Wi-Fi 或你不控制的网络上用；要跨不可信链路就自己叠 VPN，或者等中继 / 持久信任落地。
+
+上报漏洞走 GitHub 的 Private security vulnerability reporting，不要开公开 Issue。
+
+---
+
+## 仓库结构
+
+```
+DocumentX/
+├── protocol.json                     # 跨端常量的唯一来源（协议标记、模板、宽度、限额、端口、请求头名）
+├── apps/
+│   ├── desktop/
+│   │   ├── desktop_hub/
+│   │   │   ├── server.js             # HTTP/HTTPS + UDP + 全部 API（仅 Node 标准库）
+│   │   │   ├── crypto_protocol.js    # ECDH / HKDF / AES-256-GCM / HMAC 证明
+│   │   │   ├── lan_guard.js          # 中继目标校验（SSRF 面）
+│   │   │   ├── tls_selfsigned.js     # 纯 Node 自签名证书（含 DER 编码）
+│   │   │   ├── protocol.gen.js       # 由 protocol.json 生成，别手改
+│   │   │   ├── tls/                  # 自动生成的证书与私钥（gitignore）
+│   │   │   ├── temp_transfers/       # 传输中的 .part（gitignore）
+│   │   │   └── public/
+│   │   │       ├── index.html        # 桌面 UI
+│   │   │       ├── app.js            # 队列、分块、压缩、配对弹窗
+│   │   │       ├── portal.html       # Web 门户（自包含，含浏览器加密代码）
+│   │   │       └── style.css         # 三套主题
+│   │   ├── tauri-app/                # Tauri 2 外壳：托盘 + 3 个全局快捷键
+│   │   └── installer/                # Windows 自解压安装包构建（C# 向导 + Node 打包脚本）
+│   └── android/
+│       ├── com/                      # Android 工程（Kotlin + ViewBinding，minSdk 26 / targetSdk 34）
+│       │   ├── app/src/main/assets/portal.html   # 必须与桌面端那份逐字节一致
+│       │   └── app/src/main/java/com/safedrop/mobile/
+│       │       ├── core/crypto/      # CryptoEngine.kt + 生成的 ProtocolConst.kt
+│       │       ├── core/network/     # 发现、HTTP 客户端、组播锁
+│       │       ├── service/          # 前台保活服务、手机侧接收服务
+│       │       └── ui/               # 雷达、扫码、分享入口、传输面板
+│       └── README.md                 # Android 端专文
+├── scripts/
+│   ├── protocol.js                   # gen / check：把 protocol.json 灌进 Node 与 Kotlin 两份实现
+│   ├── gen-vectors.js                # 生成 / 校验 test/vectors/e2e-v2.json
+│   └── version-check.js              # 版本号一致性
+├── test/
+│   ├── crypto-protocol.test.js       # node:test
+│   ├── lan-guard.test.js             # node:test
+│   ├── vectors/e2e-v2.json           # 跨端金标向量（Node 与 Kotlin 共读一份）
+│   └── e2e/                          # 起真实 hub 进程的端到端套件 + 三个界面回归套件
+├── docs/                             # 快捷键说明；archive/ 是历史优化报告，不代表现状
+├── SECURITY.md
+├── CONTRIBUTING.md
+└── CHANGELOG.md
+```
+
+`.gitignore` 排掉了 `*.exe` / `*.apk` / `*.msi` / `*.dll`，安装包只挂在 Release 附件上；仓库里唯一入库的二进制是 Gradle wrapper jar 和图标。
+
+**技术栈**：桌面后端 Node.js 标准库（`http`/`https`/`dgram`/`crypto`/`zlib`/`os`/`fs`/`path`/`child_process`，无 `node_modules`）；界面无框架、无外链字体（离线也能正常显示），前端唯一的外来代码是入库的 `public/qrcode.js`（Kazuhiko Arase 的 QR Code Generator，MIT，只有桌面 UI 引用它）；外壳 Tauri 2 + `tauri-plugin-global-shortcut`；Android 为 Kotlin + ViewBinding（**不是** Jetpack Compose）、OkHttp3、CameraX、BouncyCastle、MediaStore 分区存储。发现协议是自定义 UDP beacon，不是 mDNS。
+
+---
+
+## 测试
+
+以下数字都是在 2026-09-19 于 Windows / Node 24.19.0 上跑出来的，不是从旧文档抄的。全部命令从仓库根目录执行。
+
+### CI 会跑的（失败即红）
+
+| 命令 | 覆盖 | 实测 |
+|:---|:---|:---|
+| `node scripts/protocol.js check` | 四端实现、两份 portal 副本、README 里的协议标记是否还是同一份协议 | 通过：`safedrop-e2e-v2`，5 个模板，8 个文件一致 |
+| `node scripts/gen-vectors.js --check` | 金标向量能被当前代码逐字节复现 | 通过 |
+| `node --test test/*.test.js` | 加密层 + 中继目标校验（单元，无端口无设备） | **23** 项通过 / 0 失败 |
+| `node test/e2e/encryption_e2e.js` | 起真实 hub：配对、加解密、丢块 / 重放 / 提前定稿 / 篡改拒绝、凭据泄漏、限流、手机↔手机中继、HTTPS 门户、直接执行 `portal.html` 里的浏览器加密代码（11 个小节） | **60** 项通过 / 0 失败 |
+| `node test/e2e/qr_and_security.js` | 二维码载荷格式、PIN 宽限、SSRF 目标拒绝、路径处理 | **32** 项通过 / 0 失败 |
+| `node test/e2e/multi_device_and_portal.js` | 多设备共存、门户页面与上传下载闭环 | **14** 项通过 / 0 失败 |
+| `node scripts/version-check.js` | 11 个文件里的版本字符串是否都等于 hub 的 `APP_VERSION` | **19/19** |
+| `gradle testDebugUnitTest`（Android job） | Kotlin 加密实现读同一份向量，含 5 个正例分块与 7 个必须被拒的反例 | **14** 项通过 / 0 失败 |
+| `node test/e2e/{theme_and_device_display,new_chat_and_layout_features,scrollbar_and_copy_features}.js` | 界面设计契约：主题 token 对称、禁止远程字体、禁止渐变与发光、色值债务棘轮、滚动条可读性 | **27 / 20 / 17** 项通过，2 项按原因跳过 |
+
+合计：Node 侧 193 项断言 + 契约 / 版本两条检查，Kotlin 侧 14 项。
+
+**CI 覆盖不到的部分**：Android job 没有模拟器，所以手机**接收端**的定位写入与完成判定、CORS 逐源回显、配对限流只有"能编译"和"加密实现一致"两层保证，运行时行为完全未测；同理，前台服务、扫码、分区存储写入也只能靠手工验证。想测这些需要接真机跑 `connectedAndroidTest`，仓库里目前没有 `androidTest` 源码目录。
+
+**中继一节需要一个"不是 hub 自己"的地址**：Section 8 把密封块中继到一个与 hub 本机地址不同的目标上，单网卡机器上没有这样的地址。CI 因此在跑该套件前给 runner 加一个 `192.168.250.1/lo`（`ip -4 addr add`），让中继路径真的被执行；本地若只有一个地址，这条会打印 `[skip]` 并计入 Skipped——**跳过不是通过**，汇总行会显式显示跳了几条。
+
+### 界面契约套件（现已纳入 CI）
+
+`theme_and_device_display`（27 项）、`new_chat_and_layout_features`（20 项 + 1 skip）、`scrollbar_and_copy_features`（17 项 + 1 skip）。它们原先是对着旧样式钉死十六进制字面量的快照，界面重做后全部失效；现在改成断言**设计契约本身**：
+
+- 三套主题必须定义同一组 token，任何一套缺项即红；UI 能选的主题必须与 CSS 里真的画出来的主题一一对应。
+- **任何界面文件都不许通过网络取字体或其它资源**（重做前 `index.html` 拉 Plus Jakarta Sans、`portal.html` 拉 Outfit，纯局域网环境下字体根本加载不出来，还让一个免安装页面为渲染文字去连外网）。
+- 主按钮不许有渐变或彩色发光；token 块之外出现色值即红（雷达等待清偿的文件被列进"色值债务"清单，清单内容变化本身会让检查失败，所以只能变小不能变大）。
+- 滚动条滑块必须与自己的轨道看得见差异、悬停必须有反馈；文本可选中而界面外壳不可选中。
+
+这两套的 skip 是诚实的：APK 那条要求一个不入库的本地产物，消息中继那条要求 8899 上有 hub 在应答——都打印原因，绝不记为通过。
+
+上一轮重构遗留的同类路径问题（`build_installer.js` / `test_installer_extraction.js` 的 `ROOT_DIR` 少一层、`apps/android/test_e2e_verification.js` 的 `require` 少一层）也已修正。
+
+上面这些是本仓库当前已知的账，列在这里而不是藏起来。修它们请直接改代码，不要放宽断言。
+
+---
+
+## 下载
+
+[Releases](https://github.com/Paper-Yuan/DocumentX/releases/tag/v1.3.0) 上的 v1.3.0 附件：
 
 | 产物 | 说明 |
 |:---|:---|
-| `SafeDrop-Setup-1.3.0.exe` | Windows 单文件自解压安装包，内置便携 Node 运行时，双击即可安装，无需另外装 Node.js |
-| `SafeDrop-Android-1.3.0.apk` | Android 接收端，需允许"安装未知来源应用" |
+| `SafeDrop-Setup-1.3.0.exe` | Windows 单文件自解压安装包，内置便携 Node 运行时（35,717,632 字节，约 34 MB） |
+| `SafeDrop-Android-1.3.0.apk` | Android 接收端，需允许"安装未知来源应用"（29,861,728 字节，约 28 MB） |
 
-> 校验值：Release 流程目前**还不产出** `SHA256SUMS.txt`，所以别去下载它；补齐自动生成是发布流水线的待办项。
+**已知限制，请逐条当作事实看待**：
 
-> ⚠️ **两端必须实现同一版传输协议：`safedrop-e2e-v2`。** 这个标记由 `protocol.json` 单一来源规定，握手不匹配会被直接拒绝；已发布的 1.3.0 客户端说的是 `safedrop-e2e-v1`，连不上当前代码。桌面端还会拒绝未建立加密握手会话的上传（HTTP 401），也拒绝"已配对但不加密"的上传（HTTP 400）——明文上传只对本机回环开放，两端同规则。旧版 APK（1.0.2 等）没有握手逻辑，同样直接失败。这是有意为之：宁可失败也不静默退化成明文或旧帧格式。
->
-> ⚠️ Android 包使用调试密钥签名（`CN=Android Debug`）。它足够用于自用与内部分发，但**不是**发布到应用商店的签名；同一设备上后续版本必须用同一密钥签名才能覆盖安装。
->
-> 仓库 `main` 分支不含二进制文件（已在 `.gitignore` 中排除），二进制只挂在 Release 附件上。
-
-也可以从源码构建，命令见 [快速开始](#-quick-start) 与 [打包](#-打包)。
+1. **这两个包说的是 `safedrop-e2e-v1`，连不上当前 `main`。** 桌面端会拒未握手的上传（401）和"已配对但不加密"的上传（400），明文上传只对本机回环开放；两端同规则，宁可失败也不静默退回明文或旧帧格式。要用当前协议，从源码跑。
+2. **校验值不可靠。** Release 页上确实挂着一份 184 字节的 `SHA256SUMS.txt`，但仓库里没有任何发布流水线（`.github/workflows/` 只有 `ci.yml`），也没有一行脚本生成它；它的时间戳早于两个安装包上传 / 替换的时间。所以：**不要把它当成这两个包的可信摘要**，自动生成 + 自动上传是待办项。
+3. **APK 用调试密钥签名**（`CN=Android Debug`）。自用和内部分发够了，不是上架签名；同一台机器上后续版本必须用同一把钥匙签才能覆盖安装。release 构建会读 `apps/android/com/keystore.properties`（已 gitignore）或 `SAFEDROP_KEYSTORE_*` 环境变量，没配就回退 debug 签名并明确不可分发。仓库不含任何签名密钥。
 
 **运行要求**
 
 | 平台 | 要求 |
 |:---|:---|
 | Windows | Windows 10 1809+ / 11，64 位 |
-| Android | Android 8.0（API 26）及以上，需与桌面端处于同一局域网 |
-| Web 门户 | Chrome / Firefox / Safari / Edge 等现代浏览器 |
-| macOS / Linux | Tauri 代码本身跨平台，但**尚未实机验证**，不保证可用 |
+| Android | Android 8.0（API 26）及以上，与桌面端同一局域网 |
+| Web 门户 | 支持 WebCrypto 的现代浏览器，且必须以 `https://` 打开 |
+| macOS / Linux | Tauri 代码跨平台，但未实机验证，不保证可用 |
 
 ---
 
-## 📦 打包
-
-### Windows 单文件安装包
+## 打包
 
 ```bash
+# Android
+cd apps/android/com
+./gradlew.bat assembleDebug          # 已实测：--offline 也能跑通
+./gradlew.bat assembleRelease        # app/build/outputs/apk/release/app-release.apk
+cd .. && node pack_apk.js            # 归档为 apps/android/SafeDrop-release.apk
+
+# Windows 安装包（当前布局下有路径 bug，见「测试」一节）
 node apps/desktop/installer/build_installer.js
+
+# Tauri 外壳（需要 Rust + MSVC；CI 不构建，本次未验证）
+cd apps/desktop/tauri-app && npm install && npx tauri build
 ```
 
-产物：`set/SafeDrop-Setup.exe`（约 34 MB，自带 Node 运行时，目标机无需预装环境）。
+安装包流程是"发现模块 → 校验依赖 → 压缩载荷 → 编译安装器"，缺模块会让**构建**失败而不是让用户装完启动即 `MODULE_NOT_FOUND`；细节见 [installer/README.md](./apps/desktop/installer/README.md)。
 
-构建流程为"发现模块 → 校验依赖 → 压缩载荷 → 编译安装器"，其中**依赖校验会让缺失模块的构建直接失败**——因为这类问题只会在用户安装后才暴露（表现为启动即 `MODULE_NOT_FOUND`）。打包细节见 [installer/README.md](./apps/desktop/installer/README.md)。
-
-### Android APK
-
-```bash
-cd apps/android/com
-gradlew.bat assembleRelease     # 输出 app/build/outputs/apk/release/app-release.apk
-cd .. && node pack_apk.js       # 归档为 SafeDrop-release.apk
-```
-
-**发布签名**：release 构建会读取 `apps/android/com/keystore.properties`（已在 `.gitignore` 中），或 `SAFEDROP_KEYSTORE_FILE` / `SAFEDROP_KEYSTORE_PASSWORD` / `SAFEDROP_KEY_ALIAS` / `SAFEDROP_KEY_PASSWORD` 环境变量：
-
-```properties
-storeFile=C:/path/to/release.jks
-storePassword=...
-keyAlias=...
-keyPassword=...
-```
-
-未配置时回退到 debug 签名，构建仍可成功，但**该 APK 不可用于分发**（会被应用商店与部分系统拒绝）。仓库不包含任何签名密钥。
-
-### Tauri 桌面外壳（MSI / NSIS）
-
-```bash
-cd apps/desktop/tauri-app
-npx tauri build
-```
-
-需要本机具备 Rust 工具链与 MSVC 构建环境；当前环境未安装，因此该产物未经验证。
+从 Tauri 外壳启动时前端由后端服务提供，`connect-src http:` 已在 CSP 里放行；自行收紧 `csp` 时记得留 `/api/...`，否则界面会停在加载态。
 
 ---
 
-## 🚀 Quick Start
+## 参与
 
-### 桌面端（Windows）
+环境怎么跑、提 PR 前必须过的两件事（契约检查 + 测试套件）、改 `protocol.json` 为什么等于改线格式、以及那份"门户必须自包含且逐字节一致"的规则，都写在 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
-```bash
-cd apps/desktop/tauri-app
-npm install
-npx tauri dev        # 开发模式
-npx tauri build      # 打包
-```
+## 许可与命名
 
-若只想运行后端与 UI，不经过 Tauri 外壳：
-
-```bash
-node apps/desktop/desktop_hub/server.js
-# 打开 http://127.0.0.1:8899
-```
-
-**全局快捷键**
-
-| 快捷键 | 作用 |
-|:---|:---|
-| `Ctrl/Cmd + Shift + S` | 显示 / 隐藏主窗口 |
-| `Ctrl/Cmd + Shift + Q` | 快速发送文件 |
-| `Ctrl/Cmd + Shift + R` | 刷新设备列表 |
-
-快捷键注册失败不会阻断启动（例如与其它软件冲突时），日志会给出提示。
-
-> 从 Tauri 外壳启动时，前端由后端服务提供。Tauri 的 CSP 已放行 `connect-src http:` 与 Google Fonts，因此界面能正常访问本机后端；若你自行收紧 `csp`，注意 `/api/...` 请求必须被允许，否则界面会停在加载态。
-
-### Android 端
-
-```bash
-cd apps/android/com
-./gradlew assembleDebug
-```
-
-安装后需授予相机（扫码）、通知权限，并按引导关闭电池优化。接收到的文件保存在 `Download/SafeDrop/`。
-
-### Web 门户
-
-在桌面端界面（或二维码弹窗里的"直连网址"）找到门户地址，在任意设备的浏览器打开：
-
-```
-https://<局域网IP>:8900/portal
-```
-
-首次访问会出现自签名证书警告，选择继续访问即可（该证书只用于传输加密，身份由配对码保证）。然后输入界面上的 6 位配对码。
-
-> 若用 `http://<局域网IP>:8899/portal` 打开，浏览器不会提供 WebCrypto，门户会直接提示"当前地址不支持加密"并拒绝配对——这是有意为之，避免在不知情的情况下走明文。
-
----
-
-## 🔐 安全模型与边界
-
-SafeDrop 的定位是**局域网内的加密传输**：载荷已加密，但配套机制仍偏"便捷优先"。把边界写清楚，是为了让你知道什么时候不该用它。
-
-### 已提供
-
-| 机制 | 说明 |
-|:---|:---|
-| 载荷加密 | 每个分块以 AES-256-GCM 封装后传输，服务端验签通过才落盘。AAD 绑定 `taskId / 序号 / 总块数 / 步长`，所以被改动、被搬到别的任务或别的位置、以及改写头部里"一共几块"来提前定稿的块都会被拒 |
-| 完整性判定 | 接收端把每块按 `序号 × 步长` 定位写入 `.part`，只有收齐 0..count-1 全部块、且落盘字节数与块流推导出的大小一致时才改名落盘（改名前把 `.part` 截到该大小，避免上一次中断留下的更长 `.part` 把尾巴混进新文件）；同一块重复到达且字节相同是幂等的，内容不同则拒绝——序号在写盘之前就被占用，所以"重发的那一块"和原请求同时在飞时也一样成立。缺块的文件永远不会有"完成"状态，也不会出现在仓库列表里 |
-| 手机 → 手机 | 发送方直接与目标手机协商独立会话，hub 只转发密文、不参与解密，因此端到端加密成立 |
-| 会话密钥协商 | 每次连接生成临时 X25519 密钥对，经 HKDF-SHA256 派生会话密钥，具备前向保密 |
-| 配对凭据不入网 | 6 位 PIN / 一次性 token 不发送给服务端，只作为 HKDF 输入，并用 HMAC 证明双方派生出同一密钥 |
-| 双向身份确认 | 服务端返回自身证明，客户端校验通过后才认为配对成功。它证明的是"对方知道当前 PIN"，因此能发现不知道 PIN 的冒充者；拿到同一 PIN 的 evil-twin hub 无法被区分（PIN 之外没有身份锚点，见「未提供」） |
-| 配对尝试限流 | 同一来源 IP 连续 8 次配对失败后封禁 5 分钟，抑制在线穷举 |
-| 接口鉴权 | 文件列表、下载、消息收发与设备名增删改等接口都要求已验证会话，未配对一律返回 401（含 `/api/v1/message/send`、`/api/v1/messages/list`、`DELETE /api/v1/devices/names/:fp`）；`/api/v1/settings/*` 只接受本机回环；跨源响应只回显本机与私网来源，不再对任意网页开放 `*`；配对 PIN 仅对本机回环请求下发，不广播给局域网 |
-| 转发目标校验 | 仅允许中继到 RFC1918 私网地址，或与本机同一网段的对端（因此非标准网段也能开箱即用）；回环、链路本地（含云元数据 `169.254.169.254`）与公网地址一律拒绝；地址只接受规范点分十进制，`010.x` 这类前导零写法直接拒（此处按十进制解释、解析器按八进制解释会造成"放行一个地址、连到另一个地址"）。跨网段可用 `SAFEDROP_RELAY_TARGETS` 显式放行 |
-| 输入处理 | 文件名做非法字符清洗；JSON 请求体上限 4 MB；单个密封分块上限 64 MB（两者都写进 `protocol.json`） |
-
-### 未提供（请勿依赖）
-
-- **桌面端自身与 hub 之间是明文 HTTP。** 本机回环通信不加密，这是速度与复杂度的取舍；如果你在同一台机器上运行不受信任的进程，它可以看到这些流量。
-- **服务端强制的是"已配对"，不是"是谁"。** 文件与消息接口都要求已验证会话，但会话只证明对方知道当前 PIN，不绑定设备身份。PIN 只有 6 位（约 20 比特）且不是 PAKE——它作为 HKDF 输入参与派生，所以能在路径上抓到完整握手的攻击者可以离线穷举 10⁶ 个候选；在线穷举则被"每 IP 8 次 / 5 分钟"限流压制。结论：它防得住误连与被动窃听，防不住蹲守同一来源地址的定向攻击，也防不住已知 PIN 的中间人。
-- **手机自己开的网页传送门只能打开、不能配对。** Android 端只监听 `http`，而同一份门户页面在非安全上下文里会拒绝配对，所以手机当 hub 时网页端只是入口提示；要配对请用另一台 SafeDrop 设备扫本机的配对码（桌面 hub 有自签名 HTTPS，不受此限）。给手机侧补 TLS 是待办。
-- **无身份持久化信任。** 每次连接都重新配对，不保存"已信任设备"凭据，因此每次接入都需要读取当前 PIN。
-- **Web 门户需要 HTTPS 才加密。** 浏览器只在安全上下文中暴露 WebCrypto，所以门户必须通过 `https://` 打开（见下节）。若你用 `http://` 打开门户，加密不可用，页面会直接拒绝配对而不是静默降级为明文。
-
-### 关于自签名证书
-
-hub 会为门户自动生成一张自签名证书（保存在 `apps/desktop/desktop_hub/tls/`），因此浏览器首次访问会提示证书不受信任。这是预期行为：**该证书只提供传输加密，不提供身份认证**；对端的真实身份由配对 PIN 与握手 HMAC 保证，所以即便有人做了中间人替换证书，拿不到 PIN 也无法解出会话密钥。
-
-**使用建议**：避免在公共 Wi-Fi 或不受信任的网络上使用；如需跨不可信链路传输，请等待中继/持久信任功能，或自行叠加 VPN。
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                  Desktop Hub (PC)                    │
-│  ┌──────────────────┐      ┌────────────────────┐   │
-│  │  Tauri 2.0 Shell │      │ Node.js Backend    │   │
-│  │  (Rust + WebView)│◄────►│ (stdlib only)      │   │
-│  │  • System Tray   │      │ • HTTP :8899       │   │
-│  │  • Shortcuts     │      │ • HTTPS :8900      │   │
-│  │                  │      │ • UDP Beacon :8890 │   │
-│  └──────────────────┘      └────────────────────┘   │
-│           │                          │               │
-│           │    HTML5 / CSS3 / JS     │               │
-│           └──────────┬───────────────┘               │
-│                      │                               │
-└──────────────────────┼───────────────────────────────┘
-                       │ LAN (Wi-Fi / Ethernet)
-         ┌─────────────┼─────────────┬────────────────┐
-         │             │             │                │
-┌────────▼──────┐ ┌────▼─────┐ ┌─────▼───────┐ ┌──────▼──────┐
-│ Android Client│ │ Browser  │ │ Another     │ │ macOS/Linux │
-│ (Kotlin +     │ │ Portal   │ │ Android     │ │ (unverified)│
-│  Views)       │ │          │ │ (via relay) │ │             │
-│ • Foreground  │ │ • Drag & │ │             │ │             │
-│   Service     │ │   drop   │ │             │ │             │
-│ • WakeLock    │ │ • QR/PIN │ │             │ │             │
-└───────────────┘ └──────────┘ └─────────────┘ └─────────────┘
-```
-
-### Tech Stack
-
-**桌面**
-- Shell: Tauri 2.0（Rust + WebView2 / WebKit），`tauri-plugin-global-shortcut`
-- Backend: Node.js 18+，仅标准库，无 npm 依赖
-- UI: 原生 HTML5 + CSS3 + Vanilla JS，Canvas 绘制雷达图
-
-**Android**
-- Kotlin + ViewBinding（Material 3 主题与组件，非 Jetpack Compose），minSdk 26 / targetSdk 34
-- OkHttp3 负责分块上传，CameraX 负责扫码
-- BouncyCastle 提供 X25519 与 AES-GCM
-- MediaStore 适配分区存储（Android 10+）
-- 前台服务 `dataSync` + `PowerManager.WakeLock` + 心跳协程
-
-**协议**
-- HTTP/1.1 + JSON 控制面，分块上传走 `application/octet-stream`，另开 HTTPS 监听供浏览器加密
-- AES-256-GCM 分块封装：`nonce(12) || ciphertext || tag(16)`，AAD = `safedrop-e2e-v2|chunk|<taskId>|<index>|<count>|<chunkSize>`
-- 会话密钥：ECDH 共享密钥经 HKDF-SHA256（salt 绑定会话 id，info 携带配对凭据）派生
-- UDP beacon 发现（`8890`），非 mDNS
-- **`protocol.json` 是所有跨端常量的唯一来源**（协议标记、模板、密钥/nonce/tag 宽度、PIN 与 token、宽限期、限流窗口、会话 TTL、端口与请求头名）。`node scripts/protocol.js gen` 据此生成 Node 与 Kotlin 两侧的实现，`node scripts/protocol.js check` 在校验里同时盯住两处浏览器内联副本和 APK 里的 portal.html 副本
-
----
-
-## 📁 Project Structure
-
-```
-DocumentX/
-├── apps/desktop/
-│   ├── tauri-app/              # Tauri 2.0 外壳（托盘、全局快捷键）
-│   ├── desktop_hub/
-│   │   ├── server.js           # HTTP/HTTPS + UDP 后端（仅标准库）
-│   │   ├── crypto_protocol.js  # 传输加密协议（ECDH/HKDF/AES-GCM/HMAC）
-│   │   ├── lan_guard.js        # 中继目标校验（防 SSRF）
-│   │   ├── tls_selfsigned.js   # 纯 Node 自签名证书生成（含 DER 编码）
-│   │   ├── tls/                # 自动生成的证书与私钥（已 gitignore）
-│   │   └── public/
-│   │       ├── index.html      # 桌面端 UI
-│   │       ├── portal.html     # Web 门户（含 WebCrypto 客户端加密）
-│   │       ├── app.js          # 前端逻辑（队列、分块、压缩）
-│   │       └── style.css       # 主题系统
-│   └── installer/              # Windows 安装包构建脚本
-├── apps/android/com/app/src/main/java/com/safedrop/mobile/
-│   ├── core/
-│   │   ├── crypto/CryptoEngine.kt        # 加解密实现（已接入传输链路）
-│   │   ├── network/                      # 发现、HTTP 客户端
-│   │   ├── cache/DeviceNameCache.kt      # 指纹 → 名称持久化
-│   │   └── storage/ScopedStorageHelper.kt
-│   ├── service/TransferForegroundService.kt
-│   └── ui/                               # ViewBinding 视图、雷达图、扫码
-├── CHANGELOG.md
-└── LICENSE (MIT)
-```
-
----
-
-## 🗺️ Roadmap
-
-### ✅ v1.0.0 — Foundation
-零配置发现、分块传输、桌面端 + Android + Web 门户三端打通。
-
-### ✅ v1.1.0 — Performance & Stability
-启动速度优化（并行初始化 + 非阻塞健康检查）、Android 后台稳定性（前台服务 + WakeLock + 心跳）、系统托盘、全局快捷键。
-
-### ✅ v1.2.0 — Throughput & UX
-并发传输队列（最多 3 个）、文本文件 gzip 压缩、指纹持久化设备命名、Android Material 3 触摸目标合规。
-
-### ✅ v1.3.0 — Encrypted Transport（当前最新）
-接通 X25519 + AES-256-GCM 载荷加密，配对凭据改为 HMAC 证明而不上网，新增配对限流、服务端会话强制校验、自签名 HTTPS 门户，并修复了原先确定性 nonce 的缺陷。打包侧补齐了此前缺失的后端模块与发布签名配置。
-
-### 🔜 Next
-- **断点续传**（仍未实现）— 前置条件已经具备：分块现在按 `序号 × 步长` 定位写、且只认认证过的块集合，所以"从中间继续"不再要求重传整文件。剩下的缺口是发送端无从知道接收端已经有哪些块（需要一个查询已收块列表的接口），以及 `temp_transfers/progress.json` 目前只在启动时读取、运行期不写入
-- **批量下载**（TAR.GZ 打包）与 **二维码分享链接**（带时效）
-- macOS / Linux 实机验证
-
-### 🔮 Later
-- 持久化信任设备身份，避免每次重新配对
-- 可选的自建中继服务（跨网络传输）
-- 访问控制与审计日志
-
----
-
-## 🧪 Testing
-
-```bash
-# 契约与单元测试（无需端口、无需设备）
-node scripts/protocol.js check          # 四端实现与 protocol.json 是否还是同一份协议
-node scripts/gen-vectors.js --check     # 金标向量能否被当前代码逐字节复现
-node --test "test/*.test.js"            # 加密层与 SSRF 防护的单元测试
-
-# 传输加密端到端（起真实 hub 进程：配对、加解密、丢块/重放/提前定稿拒绝、
-# 限流、手机→手机中继、HTTPS 门户、以及直接执行 portal.html 里的浏览器加密代码）
-node test/e2e/encryption_e2e.js
-
-# 中继目标与路径处理
-node test/e2e/qr_and_security.js
-node test/e2e/multi_device_and_portal.js
-
-# UI / 交互（以源码字符串断言为主，不能证明行为，只算回归提示）
-node test/e2e/theme_and_device_display.js
-node test/e2e/scrollbar_and_copy_features.js
-node test/e2e/new_chat_and_layout_features.js
-```
-
-Android 侧加密单元测试：`apps/android/com/app/src/test/java/com/safedrop/mobile/CryptoEngineTest.kt`。它读取与 Node 同一份 `test/vectors/e2e-v2.json`，逐项核对模板拼接结果、AAD 字节、双向证明与每个密封分块的解密，因此任何一端单方面改动协议都会在一侧红掉。运行：`cd apps/android/com && ./gradlew.bat testDebugUnitTest --offline`。
-
-CI 两侧都跑：`test-desktop` 执行上面前三条契约/单元测试加三个起真实 hub 的端到端套件，`test-android` 执行上面那条 Gradle 单元测试并上传报告。
-
----
-
-## 🤝 Contributing
-
-本项目以 MIT 许可开源，欢迎提交 Issue 与 PR。
-
-1. Fork 仓库并创建分支：`git checkout -b feature/your-feature`
-2. 提交时遵循 [Conventional Commits](https://www.conventionalcommits.org/)
-3. 发起 Pull Request
-
-**代码风格**：桌面端遵循 Rust / 现代 JS 惯例，Android 端遵循 Kotlin 官方风格与 Material3 规范。
-
----
-
-## 📄 License
-
-MIT License，详见 [LICENSE](./LICENSE)。
-
----
-
-## 📌 关于命名
+MIT，见 [LICENSE](./LICENSE)。
 
 - **SafeDrop** — 对外品牌名
-- **DocumentX** — 仓库名与内部代号
+- **DocumentX** — 仓库名与 GitHub 地址里的代号
 
 两者指同一个项目。
-
----
-
-<p align="center">
-  <sub>为局域网内的文件互传而做</sub>
-</p>

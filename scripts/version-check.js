@@ -121,7 +121,7 @@ console.log(`\n${results.length - failed}/${results.length} checks agree on ${de
 if (failed > 0) {
   console.log(
     `\n${failed} mismatch(es). Fix the copies, or update scripts/version-check.js if a checked\n` +
-      `location genuinely stopped existing. The Android Flutter tree (apps/desktop/com/) is\n` +
+      `location genuinely stopped existing. The desktop Flutter prototype (computer-design/com/ before the rename) is\n` +
       `deliberately not checked: it is unbuilt legacy slated for removal.`
   );
   process.exit(1);

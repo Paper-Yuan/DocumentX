@@ -20,7 +20,8 @@ console.log('📦 SafeDrop 电脑端自解压安装包构建 (SafeDrop-Setup.exe
 console.log('========================================================\n');
 
 const INSTALLER_DIR = __dirname;
-const ROOT_DIR = path.resolve(__dirname, '..', '..');
+// The installer lives three levels below the repository root: apps/desktop/installer.
+const ROOT_DIR = path.resolve(__dirname, '..', '..', '..');
 const HUB_DIR = path.join(ROOT_DIR, 'apps', 'desktop', 'desktop_hub');
 const TEMP_DIR = path.join(INSTALLER_DIR, 'build_staging');
 const PAYLOAD_ZIP = path.join(INSTALLER_DIR, 'payload.zip');

@@ -139,7 +139,7 @@ async function runTests() {
   // -----------------------------------------------------------------------------
   console.log('\n▶ Test 5: Live HTTP Endpoint Integration (Ping / Encrypted Handshake / Encrypted Upload / Download)');
   try {
-    const PROTO = require('../apps/desktop/desktop_hub/crypto_protocol');
+    const PROTO = require('../../apps/desktop/desktop_hub/crypto_protocol');
 
     // 1. GET /api/v1/ping
     const pingRes = await httpRequest('GET', 'http://127.0.0.1:8899/api/v1/ping');
